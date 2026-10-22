@@ -1,0 +1,29 @@
+:root { color-scheme: light dark; }
+body { margin: 0; padding: 18px 24px 48px; color: var(--vscode-foreground); background: var(--vscode-editor-background); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
+header, nav, .file-heading, .hunk-heading { display: flex; align-items: center; gap: 10px; }
+header { align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+h1 { font-size: 20px; margin: 0 0 8px; }
+#scope { max-width: 65vw; overflow-wrap: anywhere; margin: 0; opacity: .75; }
+nav { flex-wrap: wrap; }
+button { border: 1px solid var(--vscode-button-border, transparent); padding: 5px 10px; border-radius: 3px; cursor: pointer; color: var(--vscode-button-foreground); background: var(--vscode-button-background); font: inherit; }
+button:hover { background: var(--vscode-button-hoverBackground); }
+button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+button:disabled { opacity: .5; cursor: wait; }
+.reject, nav button, .file-heading button { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+.reject:hover, nav button:hover, .file-heading button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+.hint { max-width: 1000px; line-height: 1.5; opacity: .75; margin: 18px 0 10px; }
+#summary { margin: 12px 0; }
+#error { color: var(--vscode-errorForeground); white-space: pre-wrap; }
+section { margin: 24px 0; }
+.file-heading { justify-content: space-between; }
+h2 { font-family: var(--vscode-editor-font-family); font-size: 14px; overflow-wrap: anywhere; }
+.hunk { margin-bottom: 16px; border: 1px solid var(--vscode-panel-border); border-radius: 4px; overflow: hidden; }
+.hunk-heading { padding: 8px 10px; background: var(--vscode-editorGroupHeader-tabsBackground); }
+.hunk-heading span { flex: 1; opacity: .8; }
+pre { margin: 0; padding: 5px 12px; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; font-family: var(--vscode-editor-font-family); font-size: var(--vscode-editor-font-size); line-height: 1.5; }
+.context { opacity: .6; }
+.removed { background: var(--vscode-diffEditor-removedTextBackground, #8b242433); border-left: 3px solid var(--vscode-editorGutter-deletedBackground, #c74e39); }
+.added { background: var(--vscode-diffEditor-insertedTextBackground, #23853933); border-left: 3px solid var(--vscode-editorGutter-addedBackground, #59a56e); }
+.empty { padding: 12px; opacity: .7; }
+#skipped { margin-top: 24px; }
+#skipped pre { margin-top: 10px; }

@@ -1,0 +1,132 @@
+{
+  "name": "change-review",
+  "displayName": "Change Review",
+  "description": "Review individual changes from each request directly in the editor.",
+  "version": "0.5.0",
+  "publisher": "local-tools",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./review.js",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "changeReview.show",
+        "title": "Change Review: Open",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "changeReview.queue",
+        "title": "Change Review: Review Queue",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "changeReview.next",
+        "title": "Change Review: Next Change"
+      },
+      {
+        "command": "changeReview.previous",
+        "title": "Change Review: Previous Change"
+      },
+      {
+        "command": "changeReview.fileActions",
+        "title": "Change Review: File and Request Actions",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "changeReview.forget",
+        "title": "Change Review: Discard Saved Snapshot"
+      },
+      {
+        "command": "changeReview.status",
+        "title": "Change Review: Integration Status"
+      },
+      {
+        "command": "changeReview.toggle",
+        "title": "Change Review: Toggle Review"
+      },
+      {
+        "command": "changeReview.enable",
+        "title": "Review Disabled — Enable",
+        "icon": "$(circle-slash)"
+      },
+      {
+        "command": "changeReview.disable",
+        "title": "Review Enabled — Disable",
+        "icon": "$(check)"
+      },
+      {
+        "command": "changeReview.acceptAll",
+        "title": "Change Review: Accept All Pending Changes",
+        "icon": "$(check-all)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "changeReview.show",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r"
+      },
+      {
+        "command": "changeReview.next",
+        "key": "alt+]",
+        "mac": "alt+]",
+        "when": "changeReview.inEditor"
+      },
+      {
+        "command": "changeReview.previous",
+        "key": "alt+[",
+        "mac": "alt+[",
+        "when": "changeReview.inEditor"
+      },
+      {
+        "command": "changeReview.toggle",
+        "key": "ctrl+alt+shift+r",
+        "mac": "cmd+alt+shift+r"
+      }
+    ],
+    "configuration": {
+      "title": "Change Review",
+      "properties": {
+        "changeReview.autoOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open pending changes in the editor when a request finishes."
+        },
+        "changeReview.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "Track new proposals and show Accept / Reject. Disabling review preserves the existing queue and skips new requests."
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": {
+      "supported": false
+    }
+  },
+  "dependencies": {
+    "diff": "9.0.0"
+  },
+  "author": {
+    "name": "alexeytozik",
+    "email": "tozikalexey@gmail.com"
+  },
+  "icon": "media/icon.png"
+}
