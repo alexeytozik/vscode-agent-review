@@ -2,7 +2,7 @@
   "name": "change-review",
   "displayName": "Change Review",
   "description": "Review individual changes from each request directly in the editor.",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "publisher": "local-tools",
   "private": true,
   "license": "UNLICENSED",

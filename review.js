@@ -5,11 +5,14 @@ const path = require('node:path');
 const { ReviewModel } = require('./review-model');
 const { changes, revision } = require('./core');
 const { decode } = require('./files');
+const { createModeStatus } = require('./mode-status');
 
 function activate(context) {
   let model = new ReviewModel(), serial = Promise.resolve(), selected, timer, owned = false, resumeOnOpen = false, nativeLoaded = false;
   const ignoredTurns = new Set();
   const enabled = () => vscode.workspace.getConfiguration('changeReview').get('enabled', true);
+  const modeStatus = createModeStatus(vscode, enabled);
+  context.subscriptions.push(modeStatus);
   const inserted = vscode.window.createTextEditorDecorationType({ isWholeLine: true, backgroundColor: new vscode.ThemeColor('diffEditor.insertedLineBackground'), overviewRulerColor: new vscode.ThemeColor('editorOverviewRuler.addedForeground') });
   const removed = vscode.window.createTextEditorDecorationType({ isWholeLine: true, backgroundColor: new vscode.ThemeColor('diffEditor.removedLineBackground'), overviewRulerColor: new vscode.ThemeColor('editorOverviewRuler.deletedForeground') });
   const controls = vscode.window.createTextEditorDecorationType({});
@@ -52,6 +55,7 @@ function activate(context) {
     return { text: doc?.isDirty ? (bom ? '\uFEFF' : '') + doc.getText() : bytes === null ? null : bytes.toString('utf8'), disk: bytes, doc, canonical, bom: Boolean(bom) };
   }
   function update() {
+    modeStatus.update();
     const pending = entries();
     vscode.commands.executeCommand('setContext', 'changeReview.enabled', enabled());
     vscode.commands.executeCommand('setContext', 'changeReview.hasPending', enabled() && pending.length > 0);
@@ -272,6 +276,7 @@ function activate(context) {
   const register = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand('changeReview.' + id, (...args) => exclusive(() => fn(...args)).catch(report)));
   register('show', arg => show(arg)); register('queue', choose);
   async function modeChanged() {
+    modeStatus.update();
     if (!enabled()) {
       clearTimeout(timer);
       await vscode.commands.executeCommand('editor.action.hideHover');

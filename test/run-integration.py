@@ -14,6 +14,7 @@ modes = parser.add_mutually_exclusive_group()
 modes.add_argument('--live', action='store_true')
 modes.add_argument('--stress', action='store_true')
 modes.add_argument('--edges', action='store_true')
+modes.add_argument('--mode', action='store_true')
 args = parser.parse_args()
 source = pathlib.Path(__file__).resolve().parents[1]
 code = '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code'
@@ -28,7 +29,8 @@ settings.write_text(json.dumps({'workbench.startupEditor': 'none', 'extensions.a
     'extensions.autoCheckUpdates': False, 'telemetry.telemetryLevel': 'off', 'files.autoSave': 'off',
     'editor.codeLens': False,
     'editor.hover.enabled': 'off', 'editor.hover.delay': 10000,
-    'changeReview.autoOpen': True}))
+    'changeReview.autoOpen': True,
+    **({'changeReview.enabled': False} if args.mode else {})}))
 if args.live:
     vendor = pathlib.Path.home() / '.vscode/extensions/openai.chatgpt-26.1007.21434-darwin-arm64'
     copy = extensions / vendor.name
@@ -41,9 +43,9 @@ if args.live:
         subprocess.run([sys.executable, str(source / 'install.py'), 'restore', '--extension', str(copy)], check=True)
     subprocess.run([sys.executable, str(source / 'install.py'), 'apply', '--extension', str(copy)], check=True)
 
-for phase in (['edges'] if args.edges else ['stress'] if args.stress else ['live' if args.live else 'fixture', 'restore', 'resume']):
-    result_file = workspace / (f'{phase}-result.json' if phase in ['restore', 'resume', 'stress', 'edges'] else 'integration-result.json')
-    test_module = source / ('test/edges.integration.js' if args.edges else 'test/stress.integration.js' if args.stress else 'test/agent.integration.js')
+for phase in (['mode', 'mode-restore'] if args.mode else ['edges'] if args.edges else ['stress'] if args.stress else ['live' if args.live else 'fixture', 'restore', 'resume']):
+    result_file = workspace / (f'{phase}-result.json' if phase in ['restore', 'resume', 'stress', 'edges', 'mode', 'mode-restore'] else 'integration-result.json')
+    test_module = source / ('test/mode.integration.js' if args.mode else 'test/edges.integration.js' if args.edges else 'test/stress.integration.js' if args.stress else 'test/agent.integration.js')
     command = [code, f'--extensionDevelopmentPath={source}', f'--extensionTestsPath={test_module}',
         f'--user-data-dir={root / "user"}', f'--extensions-dir={extensions}', '--skip-welcome', '--skip-release-notes',
         '--disable-workspace-trust', '--new-window', str(workspace)]
@@ -74,6 +76,8 @@ for phase in (['edges'] if args.edges else ['stress'] if args.stress else ['live
             print(f'PASS: iteration {iteration["iteration"]} — 50 changes, 25 accepted, 25 rejected', flush=True)
         print(f'PASS: stress — {result["totalChanges"]} changes across {len(result["iterations"])} new editor tabs', flush=True)
         print(f'Result: {result_file}')
+    elif args.mode:
+        print(f'PASS: {phase} — real mode indicator, commands, notifications and pending queue', flush=True)
     else:
         print(f'PASS: {phase} — editor blocks, manual changes, conflicts and persistence', flush=True)
 print(f'Logs: {root / "user/logs"}')

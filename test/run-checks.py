@@ -25,13 +25,13 @@ suites = [('unit', [runtime, '--test', '--test-reporter=tap', '--experimental-te
           ('native-installer', [sys.executable, 'test/native-install.test.py'], None, 60),
           ('installer-cases', [sys.executable, 'test/installer-cases.test.py'], None, 120)]
 if args.all:
-    integration = [('fixture', []), ('edges', ['--edges']), ('stress', ['--stress']), ('live', ['--live'])]
+    integration = [('fixture', []), ('mode', ['--mode']), ('edges', ['--edges']), ('stress', ['--stress']), ('live', ['--live'])]
 elif args.live:
     integration = [('live', ['--live'])]
 elif args.stress:
     integration = [('stress', ['--stress'])]
 else:
-    integration = [('fixture', []), ('edges', ['--edges'])]
+    integration = [('fixture', []), ('mode', ['--mode']), ('edges', ['--edges'])]
 for name, flags in integration:
     suites.append((name, [sys.executable, 'test/run-integration.py', *flags], None, 480 if name == 'live' else 300))
 results = []

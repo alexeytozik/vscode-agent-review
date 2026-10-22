@@ -45,7 +45,7 @@ content_types = '''<?xml version="1.0" encoding="utf-8"?>
 <Default Extension="xml" ContentType="text/xml"/>
 <Default Extension="" ContentType="text/plain"/>
 </Types>'''
-files = [root / name for name in ['package.json', 'package-lock.json', 'README.md', 'core.js', 'files.js', 'review.js', 'review-model.js', 'bridge.js', 'install.py', 'install-native.py', 'review-native.mjs']]
+files = [root / name for name in ['package.json', 'package-lock.json', 'README.md', 'core.js', 'files.js', 'review.js', 'review-model.js', 'mode-status.js', 'bridge.js', 'install.py', 'install-native.py', 'review-native.mjs']]
 files += [p for directory in ['media', 'node_modules/diff'] for p in (root / directory).rglob('*') if p.is_file()]
 with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED) as archive:
     archive.writestr('extension.vsixmanifest', manifest)
