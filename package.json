@@ -1,8 +1,8 @@
 {
   "name": "change-review",
-  "displayName": "Change Review",
+  "displayName": "Agent Review",
   "description": "Review individual changes from each request directly in the editor.",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "publisher": "local-tools",
   "private": true,
   "license": "UNLICENSED",
@@ -23,38 +23,38 @@
     "commands": [
       {
         "command": "changeReview.show",
-        "title": "Change Review: Open",
+        "title": "Agent Review: Open",
         "icon": "$(diff)"
       },
       {
         "command": "changeReview.queue",
-        "title": "Change Review: Review Queue",
+        "title": "Agent Review: Review Queue",
         "icon": "$(list-tree)"
       },
       {
         "command": "changeReview.next",
-        "title": "Change Review: Next Change"
+        "title": "Agent Review: Next Change"
       },
       {
         "command": "changeReview.previous",
-        "title": "Change Review: Previous Change"
+        "title": "Agent Review: Previous Change"
       },
       {
         "command": "changeReview.fileActions",
-        "title": "Change Review: File and Request Actions",
+        "title": "Agent Review: File and Request Actions",
         "icon": "$(checklist)"
       },
       {
         "command": "changeReview.forget",
-        "title": "Change Review: Discard Saved Snapshot"
+        "title": "Agent Review: Discard Saved Snapshot"
       },
       {
         "command": "changeReview.status",
-        "title": "Change Review: Integration Status"
+        "title": "Agent Review: Integration Status"
       },
       {
         "command": "changeReview.toggle",
-        "title": "Change Review: Toggle Review"
+        "title": "Agent Review: Toggle Review"
       },
       {
         "command": "changeReview.enable",
@@ -68,7 +68,7 @@
       },
       {
         "command": "changeReview.acceptAll",
-        "title": "Change Review: Accept All Pending Changes",
+        "title": "Agent Review: Accept All Pending Changes",
         "icon": "$(check-all)"
       }
     ],
@@ -97,7 +97,7 @@
       }
     ],
     "configuration": {
-      "title": "Change Review",
+      "title": "Agent Review",
       "properties": {
         "changeReview.autoOpen": {
           "type": "boolean",
@@ -128,5 +128,9 @@
     "name": "alexeytozik",
     "email": "tozikalexey@gmail.com"
   },
-  "icon": "media/icon.png"
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexeytozik/vscode-agent-review.git"
+  }
 }

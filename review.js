@@ -20,7 +20,7 @@ function activate(context) {
   const watchers = new Map();
   const storage = context.storageUri || context.globalStorageUri;
   const cache = path.join(storage.fsPath, 'request-review.json');
-  const report = e => vscode.window.showWarningMessage('Change Review: ' + e.message);
+  const report = e => vscode.window.showWarningMessage('Agent Review: ' + e.message);
   const exclusive = fn => { const job = serial.then(fn); serial = job.catch(() => {}); return job; };
   const keyFor = e => ({ turn: e.turn.key, path: e.file.path, revision: e.revision });
   const virtual = (scheme, arg) => vscode.Uri.from({ scheme, path: arg.path, query: JSON.stringify({ turn: arg.turn }) });
@@ -138,13 +138,13 @@ function activate(context) {
       return { start: range.start.line + 1, end: range.end.line + 1, arg: { ...keyFor(entry), hunk: hunk.id } };
     });
   }
-  function requireEnabled() { if (!enabled()) throw new Error('Review is disabled. Run Change Review: Toggle Review or press ⌘⌥⇧R.'); }
+  function requireEnabled() { if (!enabled()) throw new Error('Review is disabled. Run Agent Review: Toggle Review or press ⌘⌥⇧R.'); }
   async function show(arg) {
     await ready;
     requireEnabled();
     const entry = entryFor(arg) || entryFor(pendingQueue()[0]);
     if (!entry) {
-      vscode.window.showInformationMessage(entries().length ? 'No changes are ready for review. Saved conflicts are available in Change Review: Review Queue.' : 'No pending changes.');
+      vscode.window.showInformationMessage(entries().length ? 'No changes are ready for review. Saved conflicts are available in Agent Review: Review Queue.' : 'No pending changes.');
       return;
     }
     if (entry.file.error) { report(new Error(path.basename(entry.file.path) + ': ' + entry.file.error)); return; }

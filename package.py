@@ -7,7 +7,7 @@ import zipfile
 
 root = pathlib.Path(__file__).resolve().parent
 package = json.loads((root / 'package.json').read_text())
-destination = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else f'/tmp/change-review-{package["version"]}.vsix')
+destination = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else f'/tmp/agent-review-{package["version"]}.vsix')
 manifest = f'''<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011">
   <Metadata>
@@ -55,6 +55,10 @@ with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED) as archive:
         if file == root / 'package.json':
             packaged = {**package, '__metadata': {'publisherDisplayName': package['author']['name']}}
             archive.writestr(entry, json.dumps(packaged, ensure_ascii=False, indent=2) + '\n')
+        elif file == root / 'README.md':
+            # Extension details already show the icon above the README.
+            logo = f'<img src="{package["icon"]}" alt="{package["displayName"]}" width="128">\n\n'
+            archive.writestr(entry, file.read_text().removeprefix(logo))
         else:
             archive.write(file, entry)
 print(destination)

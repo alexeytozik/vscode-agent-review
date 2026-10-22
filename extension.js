@@ -18,7 +18,7 @@ function activate(context) {
     queue = result.catch(() => {});
     return result;
   }
-  function report(e) { vscode.window.showErrorMessage('Change Review: ' + e.message); }
+  function report(e) { vscode.window.showErrorMessage('Agent Review: ' + e.message); }
   async function canonical(full) {
     let existing = path.resolve(full), suffix = [];
     for (;;) {
@@ -183,13 +183,13 @@ function activate(context) {
   }
   function show(preserveFocus = false) {
     if (panel) { if (!preserveFocus) panel.reveal(vscode.ViewColumn.Active, false); publish(); return; }
-    panel = vscode.window.createWebviewPanel('changeReview.review', 'Change Review', { viewColumn: vscode.ViewColumn.Active, preserveFocus }, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')] });
+    panel = vscode.window.createWebviewPanel('changeReview.review', 'Agent Review', { viewColumn: vscode.ViewColumn.Active, preserveFocus }, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')] });
     panel.iconPath = new vscode.ThemeIcon('diff');
     const web = panel.webview;
     const nonce = crypto.randomBytes(20).toString('hex');
     const js = web.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'review.js'));
     const css = web.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'review.css'));
-    web.html = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${web.cspSource}; script-src 'nonce-${nonce}';"><link rel="stylesheet" href="${css}"><title>Change Review</title></head><body><header><div><h1>Change Review</h1><p id="scope"></p></div><nav><button data-action="refresh">Refresh</button><button data-action="start">Select Folder</button><button data-action="stop">Stop</button></nav></header><p class="hint">Changes are already in the files. Accept keeps a change; Reject restores its previous text. Manual edits in the selected folder are also included.</p><p id="summary" role="status"></p><p id="error" role="alert"></p><main id="files"></main><details id="skipped"><summary>Skipped Files</summary><pre></pre></details><script nonce="${nonce}" src="${js}"></script></body></html>`;
+    web.html = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${web.cspSource}; script-src 'nonce-${nonce}';"><link rel="stylesheet" href="${css}"><title>Agent Review</title></head><body><header><div><h1>Agent Review</h1><p id="scope"></p></div><nav><button data-action="refresh">Refresh</button><button data-action="start">Select Folder</button><button data-action="stop">Stop</button></nav></header><p class="hint">Changes are already in the files. Accept keeps a change; Reject restores its previous text. Manual edits in the selected folder are also included.</p><p id="summary" role="status"></p><p id="error" role="alert"></p><main id="files"></main><details id="skipped"><summary>Skipped Files</summary><pre></pre></details><script nonce="${nonce}" src="${js}"></script></body></html>`;
     panel.onDidDispose(() => { panel = undefined; });
     web.onDidReceiveMessage(message => {
       if (!message || typeof message.action !== 'string') return;

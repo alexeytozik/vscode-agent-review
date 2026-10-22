@@ -28,7 +28,7 @@ for (const enabled of [true, false]) {
     assert.ok(f.visible);
     assert.equal(f.item.text, (enabled ? '$(check)' : '$(circle-slash)') + ' Review: ' + mode);
     assert.equal(f.item.command, 'changeReview.toggle');
-    assert.equal(f.item.name, 'Code Review');
+    assert.equal(f.item.name, 'Agent Review');
     assert.match(f.item.tooltip, new RegExp('is ' + mode));
     assert.match(f.item.tooltip, new RegExp(enabled ? 'turn it off' : 'turn it on'));
     assert.equal(f.item.accessibilityInformation.label, f.item.tooltip);
@@ -38,7 +38,7 @@ for (const enabled of [true, false]) {
     const f = fixture(enabled), mode = enabled ? 'OFF' : 'ON';
     f.set(!enabled);
     assert.ok(f.item.text.endsWith(mode));
-    assert.deepEqual(f.messages, ['Code review is ' + mode + '.']);
+    assert.deepEqual(f.messages, ['Agent Review is ' + mode + '.']);
     for (let index = 0; index < 50; index++) f.status.update();
     assert.equal(f.messages.length, 1, 'Queue and configuration refreshes do not repeat the notification');
   });
@@ -48,7 +48,7 @@ test('rapid changes keep the indicator and every notification in order', () => {
   const f = fixture(false);
   for (let index = 0; index < 10; index++) f.set(index % 2 === 0);
   assert.ok(f.item.text.endsWith('OFF'));
-  assert.deepEqual(f.messages, Array.from({ length: 10 }, (_, index) => 'Code review is ' + (index % 2 ? 'OFF' : 'ON') + '.'));
+  assert.deepEqual(f.messages, Array.from({ length: 10 }, (_, index) => 'Agent Review is ' + (index % 2 ? 'OFF' : 'ON') + '.'));
 });
 
 test('unloading the extension disposes its indicator', () => {

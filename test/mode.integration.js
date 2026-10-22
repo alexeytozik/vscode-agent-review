@@ -29,7 +29,7 @@ async function run() {
   await api.ready;
   assert.equal(items.length, 1, 'The active extension creates one real status bar item');
   const item = items[0], config = vscode.workspace.getConfiguration('changeReview');
-  const notices = () => notifications.filter(message => /^Code review is (ON|OFF)\.$/.test(message));
+  const notices = () => notifications.filter(message => /^Agent Review is (ON|OFF)\.$/.test(message));
   async function waitFor(predicate) {
     const deadline = Date.now() + 3000;
     while (!predicate() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
@@ -49,7 +49,7 @@ async function run() {
   await vscode.commands.executeCommand(item.command);
   assert.equal(api.isEnabled(), true);
   assert.equal(item.text, '$(check) Review: ON');
-  assert.deepEqual(notices(), ['Code review is ON.']);
+  assert.deepEqual(notices(), ['Agent Review is ON.']);
   await api.setEnabled(true);
   assert.equal(notices().length, 1, 'Setting the same value does not repeat the notification');
 
@@ -63,7 +63,7 @@ async function run() {
   assert.equal(api.entries().length, 1, 'The switch preserves pending decisions');
   assert.equal(api.controlItems(vscode.window.activeTextEditor.document).length, 0);
   assert.equal(await fs.readFile(full, 'utf8'), 'after\n');
-  assert.deepEqual(notices(), ['Code review is ON.', 'Code review is OFF.']);
+  assert.deepEqual(notices(), ['Agent Review is ON.', 'Agent Review is OFF.']);
 
   await config.update('enabled', true, vscode.ConfigurationTarget.Workspace);
   await waitFor(() => item.text === '$(check) Review: ON');
