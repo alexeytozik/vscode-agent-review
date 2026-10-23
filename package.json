@@ -1,11 +1,10 @@
 {
-  "name": "change-review",
+  "name": "agent-review",
   "displayName": "Agent Review",
   "description": "Review individual changes from each request directly in the editor.",
-  "version": "0.5.2",
-  "publisher": "local-tools",
-  "private": true,
-  "license": "UNLICENSED",
+  "version": "0.6.0",
+  "publisher": "alexeytozik",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -17,7 +16,10 @@
   ],
   "main": "./review.js",
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "package": "vsce package",
+    "test:editor": "node test/run-editor.js",
+    "test:live": "node test/run-editor.js --live"
   },
   "contributes": {
     "commands": [
@@ -70,6 +72,26 @@
         "command": "changeReview.acceptAll",
         "title": "Agent Review: Accept All Pending Changes",
         "icon": "$(check-all)"
+      },
+      {
+        "command": "changeReview.connect",
+        "title": "Agent Review: Connect",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "changeReview.disconnect",
+        "title": "Agent Review: Disconnect",
+        "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "changeReview.accept",
+        "title": "Agent Review: Keep Change",
+        "icon": "$(check)"
+      },
+      {
+        "command": "changeReview.reject",
+        "title": "Agent Review: Undo Change",
+        "icon": "$(close)"
       }
     ],
     "keybindings": [
@@ -94,6 +116,18 @@
         "command": "changeReview.toggle",
         "key": "ctrl+alt+shift+r",
         "mac": "cmd+alt+shift+r"
+      },
+      {
+        "command": "changeReview.accept",
+        "key": "ctrl+alt+y",
+        "mac": "cmd+alt+y",
+        "when": "changeReview.inEditor && editorTextFocus"
+      },
+      {
+        "command": "changeReview.reject",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n",
+        "when": "changeReview.inEditor && editorTextFocus"
       }
     ],
     "configuration": {
@@ -111,6 +145,20 @@
           "description": "Track new proposals and show Accept / Reject. Disabling review preserves the existing queue and skips new requests."
         }
       }
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "changeReview.accept",
+          "when": "changeReview.inEditor",
+          "group": "navigation@1"
+        },
+        {
+          "command": "changeReview.reject",
+          "when": "changeReview.inEditor",
+          "group": "navigation@2"
+        }
+      ]
     }
   },
   "capabilities": {
@@ -132,5 +180,23 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/alexeytozik/vscode-agent-review.git"
-  }
+  },
+  "preview": true,
+  "keywords": [
+    "review",
+    "diff",
+    "changes",
+    "inline"
+  ],
+  "homepage": "https://github.com/alexeytozik/vscode-agent-review",
+  "bugs": {
+    "url": "https://github.com/alexeytozik/vscode-agent-review/issues"
+  },
+  "devDependencies": {
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.0.0"
+  },
+  "extensionKind": [
+    "ui"
+  ]
 }

@@ -79,8 +79,11 @@ class Controls {
     this.bar.appendChild(button); return button;
   }
   set(items) {
-    this.items = items; this.invalidated = false; this.busy = false;
-    this.line = this.editor.getPosition()?.lineNumber; this.refresh();
+    const changed = JSON.stringify(items) !== JSON.stringify(this.items);
+    this.items = items; if (changed) this.invalidated = false;
+    const cursor = this.editor.getPosition()?.lineNumber;
+    if (this.cursorLine !== cursor || this.line === undefined) this.line = cursor;
+    this.cursorLine = cursor; this.refresh();
   }
   refresh() {
     if (this.disposed) return;
@@ -88,8 +91,9 @@ class Controls {
     this.current = !this.invalidated && model && (this.items.find(item => item.start <= this.line && this.line <= item.end) || this.items.find(item => item.end + 1 === this.line));
     if (!this.current) { this.dom.style.display = 'none'; return; }
     const layout = this.editor.getLayoutInfo();
-    const anchor = Math.min(this.current.end + 1, model.getLineCount());
-    const rect = this.editor.getScrolledVisiblePosition({ lineNumber: anchor, column: 1 });
+    let anchor = Math.min(this.current.end + 1, model.getLineCount());
+    let rect = this.editor.getScrolledVisiblePosition({ lineNumber: anchor, column: 1 });
+    if (rect && rect.top + 22 > layout.height && this.current.start <= this.line && this.line <= this.current.end) { anchor = this.current.start; rect = this.editor.getScrolledVisiblePosition({ lineNumber: anchor, column: 1 }); }
     if (!rect || rect.top < 0 || rect.top + 22 > layout.height) { this.dom.style.display = 'none'; return; }
     const eof = this.current.end >= model.getLineCount();
     const column = (model.getLineContent?.(anchor).length || 0) + 1;

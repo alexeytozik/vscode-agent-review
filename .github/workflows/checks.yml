@@ -1,0 +1,52 @@
+name: checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm run package -- --out agent-review.vsix
+      - run: xvfb-run -a npm run test:editor
+        env:
+          REVIEW_VSIX: ${{ github.workspace }}/agent-review.vsix
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: preview-package
+          path: agent-review.vsix
+  compatibility:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        version: ['1.96.0', stable]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:editor
+        env:
+          REVIEW_EDITOR_VERSION: ${{ matrix.version }}
+      - if: runner.os == 'macOS'
+        run: npm run test:editor
+        env:
+          REVIEW_EDITOR_VERSION: ${{ matrix.version }}

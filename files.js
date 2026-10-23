@@ -6,11 +6,11 @@ const path = require('node:path');
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_FILES = 2000;
 const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
-const excludedDirs = new Set(['.git', '.hg', '.svn', 'node_modules', '.venv', 'venv', '__pycache__', '.cache', 'target', 'dist', 'build']);
+const excludedDirs = new Set(['.git', '.hg', '.svn', 'node_modules', '.venv', 'venv', '__pycache__', '.cache', 'target', 'dist', 'build', '.ssh', '.aws', '.kube', '.gnupg']);
 
 function allowed(relative) {
   const parts = relative.split(/[\\/]/);
-  return !parts.some(p => excludedDirs.has(p)) && !parts.some(p => /^\.env(?:\.|$)/.test(p) || /\.(?:pem|key|p12|pfx|kubeconfig)$/i.test(p));
+  return !parts.some(p => excludedDirs.has(p.toLowerCase())) && !parts.some(p => /^\.env(?:\.|rc$|$)/i.test(p) || /^(?:auth|credentials)\.json$/i.test(p) || /^id_(?:rsa|ed25519|ecdsa|dsa)(?:\.pub)?$/i.test(p) || /\.(?:pem|key|p12|pfx|kubeconfig)$/i.test(p));
 }
 
 function resolveInside(root, relative) {
@@ -40,6 +40,7 @@ async function assertSafe(root, relative) {
   const realExisting = await fs.realpath(existing);
   const back = path.relative(realRoot, realExisting);
   if (back === '..' || back.startsWith('..' + path.sep) || path.isAbsolute(back)) throw new Error('The symbolic link points outside the selected folder.');
+  if (!allowed(back)) throw new Error('The resolved path is excluded from review.');
   return full;
 }
 

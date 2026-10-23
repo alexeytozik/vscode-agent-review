@@ -7,11 +7,11 @@ const { createPatch } = require('diff');
 
 async function run() {
   const root = vscode.workspace.workspaceFolders[0].uri.fsPath;
-  const api = await vscode.extensions.getExtension('local-tools.change-review').activate(); await api.ready;
-  const { actionAt: nativeAction } = require('./native-actions');
-  assert.equal(vscode.extensions.getExtension('local-tools.change-review').packageJSON.contributes.menus, undefined, 'No toolbar or menu buttons');
+  const api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate(); await api.ready;
+  const { actionAt: reviewAction } = require('./review-actions');
+  assert.ok(!(await vscode.commands.getCommands()).includes('_changeReview.nativeInspect'), 'The test runs without a patched editor');
   assert.ok(vscode.workspace.getConfiguration('changeReview').inspect('enabled'), 'Toggle configuration is registered in the loaded window');
-  assert.equal(vscode.workspace.getConfiguration('editor').get('hover.enabled'), 'off');
+  assert.ok([false, 'off'].includes(vscode.workspace.getConfiguration('editor').get('hover.enabled')));
   assert.equal(vscode.workspace.getConfiguration('editor').get('hover.delay'), 10000);
   if (process.env.REVIEW_TEST_PHASE === 'resume') {
     assert.equal(api.isEnabled(), true);
@@ -20,7 +20,7 @@ async function run() {
     while (vscode.window.activeTextEditor?.document.uri.fsPath !== pending.file.path && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
     assert.equal(vscode.window.activeTextEditor?.document.uri.fsPath, pending.file.path, 'Reload automatically resumes review for the open file');
     assert.equal(vscode.window.activeTextEditor.selection.active.line, 0);
-    await nativeAction(vscode.window.activeTextEditor.document, 0, 'accept');
+    await reviewAction(vscode.window.activeTextEditor.document, 0, 'accept');
     console.log('PASS reload resumes pending review without commands or search'); return;
   }
   if (process.env.REVIEW_TEST_PHASE === 'restore') {
@@ -70,20 +70,20 @@ async function run() {
   let edit = new vscode.WorkspaceEdit(); edit.insert(doc.uri, doc.positionAt(doc.getText().length), 'manual after\n');
   assert.ok(await vscode.workspace.applyEdit(edit)); await api.refresh();
   const lenses = await vscode.commands.executeCommand('vscode.executeCodeLensProvider', doc.uri);
-  assert.ok(lenses.every(l => !l.command?.command.startsWith('changeReview.')), 'No persistent CodeLens buttons');
+  assert.ok(lenses.some(l => l.command?.command === 'changeReview.accept'), 'Public inline actions are available');
   assert.equal(api.hover(doc, new vscode.Position(0, 0)), undefined, 'Unchanged lines have no review hover');
-  const accept = await nativeAction(doc, 1, 'accept');
+  const accept = await reviewAction(doc, 1, 'accept');
   await vscode.commands.executeCommand(accept.command, ...accept.arguments);
   assert.equal(vscode.window.activeTextEditor.selection.active.line, 4, 'Continue at the next change in the same file');
   assert.equal(api.hover(doc, new vscode.Position(1, 0)), undefined, 'Accepted changes have no review hover');
-  const reject = await nativeAction(doc, 4, 'reject');
+  const reject = await reviewAction(doc, 4, 'reject');
   await vscode.commands.executeCommand(reject.command, ...reject.arguments);
   assert.equal(vscode.window.activeTextEditor.document.uri.fsPath, second, 'Continue in next actual file');
   assert.ok(vscode.window.tabGroups.activeTabGroup.activeTab.input instanceof vscode.TabInputText);
   assert.equal(doc.getText(), original.replace('one\n', 'ONE\n') + 'manual after\n');
   assert.ok(doc.isDirty, 'Manual buffer must not be saved implicitly');
   await doc.save(); assert.equal(await fs.readFile(first, 'utf8'), doc.getText());
-  console.log('PASS native controls accept, reject and advance while preserving unsaved manual text');
+  console.log('PASS public controls accept, reject and advance while preserving unsaved manual text');
   entry = api.entries().find(e => e.file.path === second);
   await api.decide({ turn: entry.turn.key, path: second, revision: entry.revision, hunk: entry.hunks[0].id }, 'reject');
   assert.equal(await fs.readFile(second, 'utf8'), 'alpha\nbeta\n'); assert.equal(api.entries().length, 0);
@@ -100,7 +100,7 @@ async function run() {
   for (const [name, before, after, mode] of [['created.txt', null, 'new\n', 0o644], ['deleted.sh', 'echo ok\r\n', null, 0o755], ['nested/deleted.sh', 'echo restored\n', null, 0o755], ['bom.txt', '\uFEFFone\r\ntwo', '\uFEFFONE\r\ntwo', 0o644]]) {
     const e = await inject(name, before, after, mode); assert.ok(e && !e.file.error, e?.file.error);
     await api.show({ turn: e.turn.key, path: e.file.path });
-    const action = await nativeAction(vscode.window.activeTextEditor.document, 0, 'reject');
+    const action = await reviewAction(vscode.window.activeTextEditor.document, 0, 'reject');
     await vscode.commands.executeCommand(action.command, ...action.arguments);
     if (before === null) await assert.rejects(fs.stat(e.file.path), { code: 'ENOENT' });
     else { assert.equal(await fs.readFile(e.file.path, 'utf8'), before); assert.equal((await fs.stat(e.file.path)).mode & 0o777, mode); }
@@ -140,7 +140,7 @@ async function run() {
   const ordered = await inject('hover (edge).txt', 'one\nkeep1\ntwo\nkeep2\nthree\n', 'ONE\nkeep1\nTWO\nkeep2\nTHREE\n');
   await api.show({ turn: ordered.turn.key, path: ordered.file.path, hunk: ordered.hunks[1].id });
   const orderedDoc = vscode.window.activeTextEditor.document;
-  const middle = await nativeAction(orderedDoc, 2, 'accept');
+  const middle = await reviewAction(orderedDoc, 2, 'accept');
   assert.equal(middle.arguments[0].path, ordered.file.path, 'Parentheses in paths survive command URI encoding');
   await vscode.commands.executeCommand(middle.command, ...middle.arguments);
   assert.equal(vscode.window.activeTextEditor.selection.active.line, 4, 'Review continues forward instead of jumping back to an earlier pending change');
@@ -151,7 +151,7 @@ async function run() {
   const older = await inject('older-request.txt', 'before\n', 'after\n');
   const current = await inject('current-request.txt', 'before\n', 'after\n');
   assert.equal(vscode.window.activeTextEditor.document.uri.fsPath, current.file.path, 'New request opens its own first change despite older queued requests');
-  const lastAction = await nativeAction(vscode.window.activeTextEditor.document, 0, 'accept');
+  const lastAction = await reviewAction(vscode.window.activeTextEditor.document, 0, 'accept');
   await vscode.commands.executeCommand(lastAction.command, ...lastAction.arguments);
   assert.equal(vscode.window.activeTextEditor.document.uri.fsPath, current.file.path, 'Completing a request does not jump into an older request');
   assert.equal(api.entries().length, 1);

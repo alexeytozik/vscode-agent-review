@@ -25,7 +25,7 @@ factory.createModeStatus = (editor, enabled) => original({
 
 async function run() {
   const root = vscode.workspace.workspaceFolders[0].uri.fsPath;
-  const api = await vscode.extensions.getExtension('local-tools.change-review').activate();
+  const api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate();
   await api.ready;
   assert.equal(items.length, 1, 'The active extension creates one real status bar item');
   const item = items[0], config = vscode.workspace.getConfiguration('changeReview');
@@ -43,6 +43,8 @@ async function run() {
   if (process.env.REVIEW_TEST_PHASE === 'mode-restore') {
     assert.equal(api.entries().length, 1, 'Pending decisions survive a restart while review is off');
     assert.equal(await fs.readFile(full, 'utf8'), 'after\n');
+    const cache = path.join(path.dirname(api.hooks.store), 'request-review.json');
+    assert.ok((await fs.stat(cache)).isFile(), 'Legacy snapshots are copied even while review is disabled');
     return;
   }
 
@@ -76,6 +78,12 @@ async function run() {
   assert.equal(config.inspect('enabled').globalValue, globalValue, 'The workspace switch preserves global preferences');
   assert.equal(notices().length, 4);
   assert.equal(items.length, 1, 'Toggles reuse the existing item');
+  const storage = path.dirname(api.hooks.store);
+  const legacy = path.join(path.dirname(storage), 'local-tools.change-review', 'request-review.json');
+  await fs.mkdir(path.dirname(legacy), { recursive: true });
+  await fs.copyFile(path.join(storage, 'request-review.json'), legacy);
+  await fs.unlink(path.join(storage, 'request-review.json'));
+
 }
 
 module.exports = { run: async () => {

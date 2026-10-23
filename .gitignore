@@ -25,3 +25,5 @@ VALIDATION.md
 .github/copilot-instructions.md
 .github/instructions/
 .github/prompts/
+
+.vscode-test/

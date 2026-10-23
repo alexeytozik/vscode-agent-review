@@ -80,7 +80,7 @@ class ReviewModel {
   constructor(saved) {
     this.turns = new Map(); this.operations = new Map();
     if (saved) {
-      if (saved.version !== 2 || !Array.isArray(saved.turns) || saved.turns.length > 200) throw new Error('Invalid saved state.');
+      if (saved.version !== 2 || !Array.isArray(saved.turns)) throw new Error('Invalid saved state.');
       for (const turn of saved.turns) {
         if (typeof turn.id !== 'string' || typeof turn.threadId !== 'string' || !Array.isArray(turn.files)) throw new Error('Invalid request.');
         for (const f of turn.files) {

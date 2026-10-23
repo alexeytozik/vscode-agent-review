@@ -17,7 +17,7 @@ modes.add_argument('--edges', action='store_true')
 modes.add_argument('--mode', action='store_true')
 args = parser.parse_args()
 source = pathlib.Path(__file__).resolve().parents[1]
-code = '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code'
+code = os.environ.get('REVIEW_CODE', '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code')
 root = pathlib.Path(tempfile.mkdtemp(prefix='review-host.'))
 workspace = root / 'workspace'
 workspace.mkdir()
@@ -27,21 +27,12 @@ settings = root / 'user/User/settings.json'
 settings.parent.mkdir(parents=True)
 settings.write_text(json.dumps({'workbench.startupEditor': 'none', 'extensions.autoUpdate': False,
     'extensions.autoCheckUpdates': False, 'telemetry.telemetryLevel': 'off', 'files.autoSave': 'off',
-    'editor.codeLens': False,
+    'editor.codeLens': True,
     'editor.hover.enabled': 'off', 'editor.hover.delay': 10000,
     'changeReview.autoOpen': True,
     **({'changeReview.enabled': False} if args.mode else {})}))
 if args.live:
-    vendor = pathlib.Path.home() / '.vscode/extensions/openai.chatgpt-26.1007.21434-darwin-arm64'
-    copy = extensions / vendor.name
-    subprocess.run(['cp', '-cR', str(vendor), str(copy)], check=True, timeout=60)
-    record = copy / 'out/review-patch.json'
-    if record.exists():
-        state = json.loads(record.read_text())
-        state.pop('configuration', None)
-        record.write_text(json.dumps(state))
-        subprocess.run([sys.executable, str(source / 'install.py'), 'restore', '--extension', str(copy)], check=True)
-    subprocess.run([sys.executable, str(source / 'install.py'), 'apply', '--extension', str(copy)], check=True)
+    raise SystemExit('Use test/run-hook-live.py for the supported lifecycle-hook integration')
 
 for phase in (['mode', 'mode-restore'] if args.mode else ['edges'] if args.edges else ['stress'] if args.stress else ['live' if args.live else 'fixture', 'restore', 'resume']):
     result_file = workspace / (f'{phase}-result.json' if phase in ['restore', 'resume', 'stress', 'edges', 'mode', 'mode-restore'] else 'integration-result.json')

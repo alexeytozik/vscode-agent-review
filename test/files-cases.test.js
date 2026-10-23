@@ -12,7 +12,7 @@ async function directory(t) {
   return root;
 }
 
-for (const name of ['.env', '.env.local', 'nested/private.pem', 'nested/client.KEY', 'nested/config.kubeconfig', 'node_modules/file.js', 'nested/.git/config']) {
+for (const name of ['.env', '.ENV', '.envrc', 'nested/.AWS/credentials', 'nested/.ssh/id_ed25519', 'nested/auth.json', 'credentials.json', '.env.local', 'nested/private.pem', 'nested/client.KEY', 'nested/config.kubeconfig', 'node_modules/file.js', 'nested/.git/config']) {
   test('snapshot excludes protected path: ' + name, () => assert.equal(allowed(name), false));
 }
 for (const name of ['file.txt', 'nested/manifest.json', 'environment.py']) {
@@ -44,6 +44,16 @@ test('snapshot refuses an unsaved document behind a symbolic link', async t => {
   await fs.symlink(outside, path.join(root, 'redirect'));
   assert.equal((await scan(root, new Map([[path.join(root, 'redirect/new.txt'), 'keep']]))).files.size, 0);
   await assert.rejects(fs.stat(path.join(outside, 'new.txt')), { code: 'ENOENT' });
+});
+test('path guard refuses aliases into excluded directories within the workspace', async t => {
+  const root = await directory(t), protectedDir = path.join(root, '.aws');
+  await fs.mkdir(protectedDir);
+  await fs.mkdir(path.join(protectedDir, 'nested'));
+  await fs.writeFile(path.join(protectedDir, 'config'), 'fixture');
+  await fs.symlink(protectedDir, path.join(root, 'alias'));
+  await assert.rejects(assertSafe(root, 'alias/config'), /excluded/);
+  await assert.rejects(assertSafe(root, 'alias/nested/new/config'), /excluded/);
+  assert.equal((await scan(root, new Map([[path.join(root, 'alias/config'), 'dirty']]))).files.size, 0);
 });
 test('oversized disk and dirty-buffer files are reported without collecting their text', async t => {
   const root = await directory(t), oversized = 'a'.repeat(MAX_FILE_BYTES + 1);

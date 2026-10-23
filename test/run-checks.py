@@ -17,7 +17,7 @@ modes.add_argument('--live', action='store_true')
 modes.add_argument('--stress', action='store_true')
 args = parser.parse_args()
 source = pathlib.Path(__file__).resolve().parents[1]
-runtime = '/Applications/Visual Studio Code.app/Contents/MacOS/Code'
+runtime = os.environ.get('REVIEW_NODE', '/Applications/Visual Studio Code.app/Contents/MacOS/Code')
 report_dir = pathlib.Path(tempfile.mkdtemp(prefix='review-checks.'))
 node_env = dict(os.environ, ELECTRON_RUN_AS_NODE='1')
 suites = [('unit', [runtime, '--test', '--test-reporter=tap', '--experimental-test-coverage', '--test-coverage-include=*.js', '--test-coverage-include=*.mjs', *[str(file.relative_to(source)) for file in sorted((source / 'test').glob('*.test.js'))]], node_env, 120),
@@ -33,7 +33,7 @@ elif args.stress:
 else:
     integration = [('fixture', []), ('mode', ['--mode']), ('edges', ['--edges'])]
 for name, flags in integration:
-    suites.append((name, [sys.executable, 'test/run-integration.py', *flags], None, 480 if name == 'live' else 300))
+    suites.append((name, [sys.executable, 'test/run-hook-live.py'] if name == 'live' else [sys.executable, 'test/run-integration.py', *flags], None, 480 if name == 'live' else 300))
 results = []
 print('Reports:', report_dir, flush=True)
 for name, command, environment, timeout in suites:

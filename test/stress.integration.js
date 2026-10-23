@@ -6,12 +6,12 @@ const { createHash } = require('node:crypto');
 const vscode = require('vscode');
 const { createPatch } = require('diff');
 
-const { actionAt } = require('./native-actions');
+const { actionAt } = require('./review-actions');
 
 async function run(root) {
-  const api = await vscode.extensions.getExtension('local-tools.change-review').activate();
+  const api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate();
   await api.ready;
-  assert.equal(vscode.workspace.getConfiguration('editor').get('hover.enabled'), 'off');
+  assert.ok([false, 'off'].includes(vscode.workspace.getConfiguration('editor').get('hover.enabled')));
   assert.equal(vscode.workspace.getConfiguration('editor').get('hover.delay'), 10000);
   assert.equal(api.entries().length, 0, 'Use a fresh isolated review queue');
   const iterations = [];
