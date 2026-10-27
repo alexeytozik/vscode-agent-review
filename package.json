@@ -2,7 +2,7 @@
   "name": "agent-review",
   "displayName": "Agent Review",
   "description": "Review individual changes from each request directly in the editor.",
-  "version": "0.6.0",
+  "version": "0.6.2",
   "publisher": "alexeytozik",
   "license": "MIT",
   "engines": {
@@ -60,12 +60,12 @@
       },
       {
         "command": "changeReview.enable",
-        "title": "Review Disabled — Enable",
+        "title": "Review Disabled \u2014 Enable",
         "icon": "$(circle-slash)"
       },
       {
         "command": "changeReview.disable",
-        "title": "Review Enabled — Disable",
+        "title": "Review Enabled \u2014 Disable",
         "icon": "$(check)"
       },
       {
@@ -142,7 +142,7 @@
           "type": "boolean",
           "default": true,
           "scope": "window",
-          "description": "Track new proposals and show Accept / Reject. Disabling review preserves the existing queue and skips new requests."
+          "description": "Enable review of confirmed apply_patch edits after writing. Connection setup and trusted hooks are required; shell and Python writes need manual review."
         }
       }
     },
@@ -150,12 +150,12 @@
       "editor/title": [
         {
           "command": "changeReview.accept",
-          "when": "changeReview.inEditor",
+          "when": "changeReview.inEditor && !changeReview.nativeControls",
           "group": "navigation@1"
         },
         {
           "command": "changeReview.reject",
-          "when": "changeReview.inEditor",
+          "when": "changeReview.inEditor && !changeReview.nativeControls",
           "group": "navigation@2"
         }
       ]

@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createModeStatus } = require('../mode-status');
 
-function fixture(initial) {
+function fixture(initial, connection = { connected: true, lastEvent: 1 }) {
   let enabled = initial, visible = false, disposed = false;
   const messages = [], item = { show() { visible = true; }, dispose() { disposed = true; } };
   const vscode = {
@@ -18,7 +18,7 @@ function fixture(initial) {
       showInformationMessage(message) { messages.push(message); return Promise.resolve(); }
     }
   };
-  const status = createModeStatus(vscode, () => enabled);
+  const status = createModeStatus(vscode, () => enabled, () => connection);
   return { status, item, messages, get visible() { return visible; }, get disposed() { return disposed; }, set(value) { enabled = value; status.update(); } };
 }
 
@@ -55,4 +55,37 @@ test('unloading the extension disposes its indicator', () => {
   const f = fixture(true);
   f.status.dispose();
   assert.ok(f.disposed);
+});
+
+test('enabled but disconnected review never claims to be on', () => {
+  const f = fixture(true, { connected: false });
+  assert.equal(f.item.text, '$(warning) Review: SETUP');
+  assert.equal(f.item.command, 'changeReview.connect');
+  assert.match(f.item.tooltip, /not connected/i);
+  assert.deepEqual(f.messages, []);
+});
+
+test('configured hooks wait for evidence of event delivery', () => {
+  const connection = { connected: true };
+  const f = fixture(true, connection);
+  assert.equal(f.item.text, '$(warning) Review: WAIT');
+  connection.lastEvent = Date.now(); f.status.update();
+  assert.equal(f.item.text, '$(check) Review: ON');
+  assert.match(f.item.tooltip, /apply_patch/);
+  connection.connected = false; f.status.update();
+  assert.equal(f.item.text, '$(warning) Review: SETUP');
+  assert.deepEqual(f.messages, []);
+});
+
+test('unsupported workspace explains why review cannot connect', () => {
+  const f = fixture(true, { available: false });
+  assert.equal(f.item.text, '$(warning) Review: UNAVAILABLE');
+  assert.equal(f.item.command, 'changeReview.status');
+  assert.match(f.item.tooltip, /one local/i);
+});
+
+test('enabling without a connection does not announce that review is on', () => {
+  const f = fixture(false, {}); f.set(true);
+  assert.ok(!f.messages.some(message => /is ON/.test(message)));
+  assert.match(f.messages[0], /not connected/i);
 });

@@ -7,7 +7,7 @@ async function main(){
   console.log('Reports: '+root);
   const executable=process.env.REVIEW_VSCODE_EXECUTABLE||await downloadAndUnzipVSCode(process.env.REVIEW_EDITOR_VERSION||'stable');
   const live=process.argv.includes('--live');
-  const groups=live?['live']:['fixture','mode','edges','stress','empty','multi',...(process.env.REVIEW_VSIX?['package']:[])];
+  const groups=live?['live']:process.argv.includes('--native')?['native']:['fixture','mode','edges','stress','empty','multi',...(process.env.REVIEW_VSIX?['package']:[])];
   const results=[];
   for(const group of groups){
     const work=path.join(root,group),workspace=path.join(work,'workspace'),user=path.join(work,'user'),extensions=path.join(work,'extensions'),home=path.join(work,'home');

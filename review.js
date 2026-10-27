@@ -10,15 +10,18 @@ const { actions, decisionGate } = require('./public-controls');
 const { createConnection } = require('./hook-connection');
 
 function activate(context) {
-  let model = new ReviewModel(), serial = Promise.resolve(), selected, timer, owned = false, resumeOnOpen = false;
+  let model = new ReviewModel(), serial = Promise.resolve(), selected, timer, owned = false, resumeOnOpen = false, nativeLoaded = false;
   const ignoredTurns = new Set();
   const enabled = () => vscode.workspace.getConfiguration('changeReview').get('enabled', true);
-  const modeStatus = createModeStatus(vscode, enabled);
+  let hooks;
+  const supportedWorkspace = () => vscode.workspace.isTrusted && vscode.workspace.workspaceFolders?.length === 1 && vscode.workspace.workspaceFolders[0].uri.scheme === 'file';
+  const modeStatus = createModeStatus(vscode, enabled, () => ({ available: supportedWorkspace(), ...hooks?.status() }));
   context.subscriptions.push(modeStatus);
   const inserted = vscode.window.createTextEditorDecorationType({ isWholeLine: true, backgroundColor: new vscode.ThemeColor('diffEditor.insertedLineBackground'), overviewRulerColor: new vscode.ThemeColor('editorOverviewRuler.addedForeground') });
   const removed = vscode.window.createTextEditorDecorationType({ isWholeLine: true, backgroundColor: new vscode.ThemeColor('diffEditor.removedLineBackground'), overviewRulerColor: new vscode.ThemeColor('editorOverviewRuler.deletedForeground') });
   const lensesChanged = new vscode.EventEmitter();
-  context.subscriptions.push(inserted, removed, lensesChanged);
+  const controls = vscode.window.createTextEditorDecorationType({});
+  context.subscriptions.push(inserted, removed, controls, lensesChanged);
   const watchers = new Map();
   const storage = context.storageUri || context.globalStorageUri;
   const cache = path.join(storage.fsPath, 'request-review.json');
@@ -60,6 +63,7 @@ function activate(context) {
     modeStatus.update();
     const pending = entries();
     vscode.commands.executeCommand('setContext', 'changeReview.enabled', enabled());
+    vscode.commands.executeCommand('setContext', 'changeReview.nativeControls', nativeLoaded);
     vscode.commands.executeCommand('setContext', 'changeReview.hasPending', enabled() && pending.length > 0);
     vscode.commands.executeCommand('setContext', 'changeReview.inEditor', enabled() && Boolean(selected && pending.some(e => e.turn.key === selected.turn && e.file.path === selected.path)));
     for (const t of model.turns.values()) for (const f of t.files.values()) {
@@ -137,7 +141,8 @@ function activate(context) {
         (h.after && h.kind !== 'delete' ? additions : deletions).push(item);
       }
       editor.setDecorations(inserted, additions); editor.setDecorations(removed, deletions);
-
+      const items = nativeLoaded ? controlItems(editor.document) : [];
+      editor.setDecorations(controls, items.length ? [{ range: new vscode.Range(0, 0, 0, 0), hoverMessage: new vscode.MarkdownString('<!-- change-review-controls:v1 -->' + JSON.stringify(items)) }] : []);
     }
   }
   function controlItems(document) {
@@ -149,6 +154,7 @@ function activate(context) {
     });
   }
   function codeLenses(document) {
+    if (nativeLoaded) return [];
     return actions(controlItems(document)).map(item => new vscode.CodeLens(new vscode.Range(item.line, 0, item.line, 0), { title: item.title, command: item.command, arguments: item.arguments }));
   }
   context.subscriptions.push(vscode.languages.registerCodeLensProvider([{ scheme: 'file' }, { scheme: 'review-current' }], { onDidChangeCodeLenses: lensesChanged.event, provideCodeLenses: codeLenses }));
@@ -187,6 +193,7 @@ function activate(context) {
       const content = new vscode.MarkdownString(); content.appendText('Review paused: ' + entry.file.error);
       return new vscode.Hover(content);
     }
+    if (nativeLoaded) return;
     const item = controlItems(document).find(item => item.start <= position.line + 1 && position.line + 1 <= item.end);
     if (item) {
       const md = new vscode.MarkdownString();
@@ -348,7 +355,7 @@ function activate(context) {
     const pick = await vscode.window.showQuickPick([...model.turns.values()].map(t => ({ label: t.id.slice(0, 12), detail: 'Discard the snapshot and keep current files unchanged', turn: t.key })));
     if (pick) { model.turns.delete(pick.turn); await persist(); update(); }
   });
-  register('status', async () => vscode.window.showInformationMessage(`Connection: ${hooks?.status().lastEvent ? 'receiving events' : hooks?.status().connected ? 'configured; waiting for trusted hooks' : 'not configured'}. Pending files: ${entries().length}.`));
+  register('status', async () => vscode.window.showInformationMessage(`Connection: ${!hooks ? 'open one local, trusted workspace folder' : !hooks.status().connected ? 'not configured' : hooks.status().lastEvent ? 'receiving events' : 'configured; waiting for trusted hooks'}. Pending files: ${entries().length}. Only confirmed apply_patch edits are queued after writing; shell and Python writes require manual review.`));
   register('connect', async () => {
     if (!hooks) throw new Error('Open one local, trusted workspace folder first.');
     await hooks.connect();
@@ -409,10 +416,12 @@ function activate(context) {
   if (folder?.uri.scheme === 'file' && vscode.workspace.isTrusted) {
     try { root = require('node:fs').realpathSync(folder.uri.fsPath); } catch { report(new Error('The workspace folder is unavailable.')); }
   }
-  const hooks = root ? createConnection({ storage: storage.fsPath, extensionPath: context.extensionPath, executable: process.execPath, root, receive, enabled, report }) : undefined;
+  hooks = root ? createConnection({ storage: storage.fsPath, extensionPath: context.extensionPath, executable: process.execPath, root, receive, enabled, report, changed: () => modeStatus.update() }) : undefined;
+  modeStatus.update();
   if (hooks) context.subscriptions.push(hooks);
   const restored = ready.then(() => exclusive(async () => {
-    decorate();
+    nativeLoaded = (await vscode.commands.getCommands()).includes('_changeReview.nativeInspect');
+    update();
     if (!enabled() || !vscode.workspace.getConfiguration('changeReview').get('autoOpen', true) || !pendingQueue().length) return;
     const document = vscode.window.activeTextEditor?.document;
     if (document) await resumeReview(document);

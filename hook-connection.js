@@ -4,17 +4,25 @@ const path = require('node:path');
 const os = require('node:os');
 const { randomUUID } = require('node:crypto');
 const { atomic, hash } = require('./hook-runner');
-const { configure, hookCommand } = require('./hook-config');
+const { configure, hookCommand, isConfigured } = require('./hook-config');
 
-function createConnection({ storage, extensionPath, executable, root, receive, enabled, report, home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex') }) {
+function createConnection({ storage, extensionPath, executable, root, receive, enabled, report, changed = () => {}, home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex') }) {
   const store = path.join(storage, 'lifecycle'), configFile = path.join(home, 'hooks.json'), instance = randomUUID();
-  let active = false, timer, watcher, disposed = false, chain = Promise.resolve(), writes = Promise.resolve(), lastEvent;
+  let active = false, configured = false, timer, watcher, disposed = false, chain = Promise.resolve(), writes = Promise.resolve(), lastEvent;
   const metadata = path.join(store, 'setup.json');
   const bootstrap = path.join(store, 'launch.js');
   const command = hookCommand(executable, bootstrap, store);
   async function update() {
     if (!active || disposed) return;
-    writes = writes.catch(() => {}).then(() => { if (active && !disposed) return atomic(path.join(store, 'connection.json'), { root, enabled: enabled(), pid: process.pid, instance, updated: Date.now(), extensionPath }); });
+    writes = writes.catch(() => {}).then(async () => {
+      if (!active || disposed) return;
+      const previous = configured;
+      try { configured = isConfigured(JSON.parse(await fs.readFile(configFile, 'utf8')), command); } catch { configured = false; }
+      if (!configured) lastEvent = undefined;
+      if (!active || disposed) return;
+      await atomic(path.join(store, 'connection.json'), { root, enabled: enabled() && configured, pid: process.pid, instance, updated: Date.now(), extensionPath });
+      if (previous !== configured) changed();
+    });
     await writes;
   }
   function drain() {
@@ -34,7 +42,7 @@ function createConnection({ storage, extensionPath, executable, root, receive, e
           }
           await receive(event);
         }
-        lastEvent = Date.now(); await fs.unlink(file);
+        lastEvent = configured ? Date.now() : undefined; await fs.unlink(file); changed();
       }
     }).catch(report);
     return chain;
@@ -81,14 +89,16 @@ function createConnection({ storage, extensionPath, executable, root, receive, e
     if (JSON.stringify(current) !== before) throw new Error('Hooks configuration changed. Run Connect again.');
     await atomic(configFile, next);
     await atomic(metadata, { command, configFile });
+    lastEvent = undefined;
     await start();
+    await update(); changed();
   }
   async function disconnect() {
     await available();
     let setup; try { setup = JSON.parse(await fs.readFile(metadata, 'utf8')); } catch (e) { if (e.code === 'ENOENT') return; throw e; }
     const input = JSON.parse(await fs.readFile(setup.configFile, 'utf8'));
     await atomic(setup.configFile, configure(input, setup.command, [], true));
-    await fs.unlink(metadata); active = false; clearInterval(timer); watcher?.close(); await writes; await fs.unlink(path.join(store, 'owner.lock')).catch(() => {}); await fs.unlink(path.join(store, 'connection.json')).catch(() => {});
+    await fs.unlink(metadata); active = false; configured = false; lastEvent = undefined; clearInterval(timer); watcher?.close(); await writes; await fs.unlink(path.join(store, 'owner.lock')).catch(() => {}); await fs.unlink(path.join(store, 'connection.json')).catch(() => {}); changed();
   }
   async function decision(arg, action) {
     if (!active) return;
@@ -105,6 +115,6 @@ function createConnection({ storage, extensionPath, executable, root, receive, e
     }).catch(() => {});
   }
   const ready = fs.readFile(metadata, 'utf8').then(() => start()).catch(e => { if (e.code !== 'ENOENT') report(e); });
-  return { ready, connect, disconnect, update, drain, decision, dispose, store, status: () => ({ connected: active, lastEvent }) };
+  return { ready, connect, disconnect, update, drain, decision, dispose, store, status: () => ({ connected: active && configured, lastEvent }) };
 }
 module.exports = { createConnection };

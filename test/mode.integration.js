@@ -8,7 +8,7 @@ const factory = require('../mode-status');
 const original = factory.createModeStatus;
 const items = [], notifications = [];
 
-factory.createModeStatus = (editor, enabled) => original({
+factory.createModeStatus = (editor, enabled, connection) => original({
   StatusBarAlignment: editor.StatusBarAlignment,
   window: {
     createStatusBarItem(...args) {
@@ -21,7 +21,7 @@ factory.createModeStatus = (editor, enabled) => original({
       return editor.window.showInformationMessage(message, ...args);
     }
   }
-}, enabled);
+}, enabled, connection);
 
 async function run() {
   const root = vscode.workspace.workspaceFolders[0].uri.fsPath;
@@ -29,7 +29,7 @@ async function run() {
   await api.ready;
   assert.equal(items.length, 1, 'The active extension creates one real status bar item');
   const item = items[0], config = vscode.workspace.getConfiguration('changeReview');
-  const notices = () => notifications.filter(message => /^Agent Review is (ON|OFF)\.$/.test(message));
+  const notices = () => notifications.filter(message => /^Agent Review(?::| is)/.test(message));
   async function waitFor(predicate) {
     const deadline = Date.now() + 3000;
     while (!predicate() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
@@ -50,8 +50,18 @@ async function run() {
 
   await vscode.commands.executeCommand(item.command);
   assert.equal(api.isEnabled(), true);
+  assert.equal(item.text, '$(warning) Review: SETUP');
+  assert.equal(item.command, 'changeReview.connect');
+  assert.match(notices()[0], /not connected/);
+  await api.hooks.connect();
+  assert.equal(item.text, '$(warning) Review: WAIT');
+  await require('../hook-runner').handle(api.hooks.store, {hook_event_name:'UserPromptSubmit',session_id:'mode-connection',turn_id:'turn',cwd:await fs.realpath(root)});
+  await api.hooks.drain();
   assert.equal(item.text, '$(check) Review: ON');
-  assert.deepEqual(notices(), ['Agent Review is ON.']);
+  await require('../hook-runner').handle(api.hooks.store, {hook_event_name:'Stop',session_id:'mode-connection',turn_id:'turn',cwd:await fs.realpath(root)});
+  await api.hooks.drain();
+  await api.hooks.disconnect();
+  assert.equal(item.text, '$(warning) Review: SETUP');
   await api.setEnabled(true);
   assert.equal(notices().length, 1, 'Setting the same value does not repeat the notification');
 
@@ -59,19 +69,20 @@ async function run() {
   await api.receive({ method: 'item/completed', type: 'fileChange', status: 'completed', threadId: 'mode', turnId: 'pending', itemId: 'change', changes: [{ path: full, kind: { type: 'update' }, diff: createPatch(full, 'before\n', 'after\n'), snapshot: { disk: 'after\n', text: 'after\n', mode: 0o644 } }] });
   await api.receive({ method: 'turn/completed', threadId: 'mode', turnId: 'pending' });
   assert.equal(api.entries().length, 1);
-  await vscode.commands.executeCommand(item.command);
+  await vscode.commands.executeCommand('changeReview.toggle');
   assert.equal(api.isEnabled(), false);
   assert.equal(item.text, '$(circle-slash) Review: OFF');
   assert.equal(api.entries().length, 1, 'The switch preserves pending decisions');
   assert.equal(api.controlItems(vscode.window.activeTextEditor.document).length, 0);
   assert.equal(await fs.readFile(full, 'utf8'), 'after\n');
-  assert.deepEqual(notices(), ['Agent Review is ON.', 'Agent Review is OFF.']);
+  assert.equal(notices().length, 2);
+  assert.equal(notices()[1], 'Agent Review is OFF.');
 
   await config.update('enabled', true, vscode.ConfigurationTarget.Workspace);
-  await waitFor(() => item.text === '$(check) Review: ON');
+  await waitFor(() => item.text === '$(warning) Review: SETUP');
   assert.equal(notices().length, 3, 'An external setting change updates and notifies once');
   const globalValue = config.inspect('enabled').globalValue;
-  await vscode.commands.executeCommand(item.command);
+  await vscode.commands.executeCommand('changeReview.toggle');
   assert.equal(api.isEnabled(), false);
   assert.equal(item.text, '$(circle-slash) Review: OFF');
   assert.equal(config.inspect('enabled').workspaceValue, false, 'The switch updates the existing workspace setting');

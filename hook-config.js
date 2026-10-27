@@ -1,5 +1,10 @@
 'use strict';
-const events = { PreToolUse: '^apply_patch$', PostToolUse: 'apply_patch|Bash|^mcp__', UserPromptSubmit: null, Stop: null, Interrupt: null };
+const events = { PreToolUse: '^apply_patch$', PostToolUse: '^(apply_patch|Bash|exec|exec_command|functions\\.exec|functions\\.exec_command)$|^mcp__', UserPromptSubmit: null, Stop: null, Interrupt: null };
+const timeout = event => event === 'Interrupt' ? 3 : 10;
+function isConfigured(input, command) {
+  return Object.entries(events).every(([event, matcher]) => Array.isArray(input?.hooks?.[event]) && input.hooks[event].some(group =>
+    (group?.matcher || null) === matcher && Array.isArray(group?.hooks) && group.hooks.some(hook => hook?.type === 'command' && hook.command === command && hook.timeout === timeout(event))));
+}
 function quote(value, platform = process.platform) {
   if (platform === 'win32') {
     if (/[\r\n"%!]/.test(value)) throw new Error('This Windows path cannot be used in a hook command.');
@@ -23,9 +28,9 @@ function configure(input, command, previous = [], remove = false) {
       if (!Array.isArray(group.hooks)) throw new Error('Unsupported hook group.');
       return { ...group, hooks: group.hooks.filter(hook => !(typeof hook.command === 'string' && owned.has(hook.command))) };
     }).filter(group => group.hooks.length);
-    if (!remove) remaining.push({ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command, timeout: event === 'Interrupt' ? 3 : 10 }] });
+    if (!remove) remaining.push({ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command, timeout: timeout(event) }] });
     if (remaining.length) result.hooks[event] = remaining; else delete result.hooks[event];
   }
   return result;
 }
-module.exports = { quote, hookCommand, configure };
+module.exports = { quote, hookCommand, configure, isConfigured };

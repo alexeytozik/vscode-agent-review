@@ -55,8 +55,9 @@ async function handle(store, event) {
     return {};
   }
   if (['Stop', 'Interrupt'].includes(hook)) { await emit([{ ...common, method: 'turn/completed', status: hook === 'Stop' ? 'completed' : 'interrupted' }]); return {}; }
-  if (hook === 'PostToolUse' && (event.tool_name === 'Bash' || /^mcp__/.test(event.tool_name || ''))) {
-    await emit([{ ...common, method: 'item/completed', type: event.tool_name === 'Bash' ? 'commandExecution' : 'externalTool', itemId: event.tool_use_id || 'external', readOnly: false }]);
+  const commandTool = /^(Bash|exec|exec_command|functions\.exec|functions\.exec_command)$/.test(event.tool_name || '');
+  if (hook === 'PostToolUse' && (commandTool || /^mcp__/.test(event.tool_name || ''))) {
+    await emit([{ ...common, method: 'item/completed', type: commandTool ? 'commandExecution' : 'externalTool', itemId: event.tool_use_id || 'external', readOnly: false }]);
     return {};
   }
   if (!['PreToolUse', 'PostToolUse'].includes(hook) || event.tool_name !== 'apply_patch' || typeof event.tool_use_id !== 'string' || !event.tool_use_id || event.tool_use_id.length > 512) return {};
