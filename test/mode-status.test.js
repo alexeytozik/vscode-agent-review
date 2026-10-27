@@ -57,35 +57,55 @@ test('unloading the extension disposes its indicator', () => {
   assert.ok(f.disposed);
 });
 
-test('enabled but disconnected review never claims to be on', () => {
+test('enabled mode stays switchable when review is disconnected', () => {
   const f = fixture(true, { connected: false });
-  assert.equal(f.item.text, '$(warning) Review: SETUP');
-  assert.equal(f.item.command, 'changeReview.connect');
+  assert.equal(f.item.text, '$(warning) Review: ON');
+  assert.equal(f.item.command, 'changeReview.toggle');
   assert.match(f.item.tooltip, /not connected/i);
+  assert.match(f.item.tooltip, /turn it off/i);
   assert.deepEqual(f.messages, []);
 });
 
 test('configured hooks wait for evidence of event delivery', () => {
   const connection = { connected: true };
   const f = fixture(true, connection);
-  assert.equal(f.item.text, '$(warning) Review: WAIT');
+  assert.equal(f.item.text, '$(warning) Review: ON');
+  assert.equal(f.item.command, 'changeReview.toggle');
+  assert.match(f.item.tooltip, /delivery is not verified/i);
   connection.lastEvent = Date.now(); f.status.update();
   assert.equal(f.item.text, '$(check) Review: ON');
   assert.match(f.item.tooltip, /apply_patch/);
   connection.connected = false; f.status.update();
-  assert.equal(f.item.text, '$(warning) Review: SETUP');
+  assert.equal(f.item.text, '$(warning) Review: ON');
+  assert.equal(f.item.command, 'changeReview.toggle');
+  assert.match(f.item.tooltip, /not connected/i);
   assert.deepEqual(f.messages, []);
 });
 
 test('unsupported workspace explains why review cannot connect', () => {
   const f = fixture(true, { available: false });
-  assert.equal(f.item.text, '$(warning) Review: UNAVAILABLE');
-  assert.equal(f.item.command, 'changeReview.status');
+  assert.equal(f.item.text, '$(warning) Review: ON');
+  assert.equal(f.item.command, 'changeReview.toggle');
   assert.match(f.item.tooltip, /one local/i);
 });
 
-test('enabling without a connection does not announce that review is on', () => {
+test('enabling without a connection reports both the mode and connection problem', () => {
   const f = fixture(false, {}); f.set(true);
-  assert.ok(!f.messages.some(message => /is ON/.test(message)));
+  assert.match(f.messages[0], /is ON/);
   assert.match(f.messages[0], /not connected/i);
 });
+
+for (const state of [{ available: false }, { connected: false }, { connected: true }, { connected: true, lastEvent: 1 }]) {
+  test('one click can disable every connection state: ' + JSON.stringify(state), () => {
+    const f = fixture(true, state);
+    assert.equal(f.item.command, 'changeReview.toggle');
+    f.set(false);
+    assert.equal(f.item.text, '$(circle-slash) Review: OFF');
+    assert.equal(f.item.command, 'changeReview.toggle');
+    assert.match(f.item.tooltip, /not recorded/i);
+    assert.match(f.item.tooltip, /preserved/i);
+    assert.deepEqual(f.messages, ['Agent Review is OFF.']);
+    for (let index = 0; index < 50; index++) f.status.update();
+    assert.equal(f.messages.length, 1);
+  });
+}

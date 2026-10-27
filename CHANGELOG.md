@@ -1,3 +1,12 @@
+# 0.6.3 — Preview
+
+- Support the local inline toolbar on verified VS Code 1.143.1 builds.
+- Keep inline actions visible in the middle of long changes and wrapped paragraphs.
+- Keep Undo/Keep labels visible beside long lines.
+- Keep the mode switch ON/OFF and clickable regardless of connection readiness.
+- Show connection problems in the tooltip and enable notification.
+- Preserve pending reviews and skip requests made while review is off.
+
 # 0.6.2 — Preview
 
 - Restore the existing inline toolbar when the local workbench integration is present.

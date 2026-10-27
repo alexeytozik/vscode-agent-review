@@ -34,6 +34,19 @@ test('[regression] controls stay visible when the selected change is taller than
   const f = await fixture(t); f.update([{ ...items('large')[0], end: 50 }]);
   assert.equal(f.state().visible, true, 'An automatically selected large change needs accessible buttons');
 });
+test('[regression] controls remain reachable in the middle of a tall change', async t => {
+  const f = await fixture(t); f.ed.line = 42; f.ed.scroll = 600;
+  f.ed.getVisibleRanges = () => [{ startLineNumber: 31, endLineNumber: 50 }];
+  f.update([{ ...items('middle')[0], end: 80 }]);
+  assert.equal(f.state().visible, true, 'Visible changes retain controls when both boundaries are off screen');
+  assert.ok(f.state().position.preference.top >= 0 && f.state().position.preference.top <= 378);
+});
+test('[regression] wrapped paragraphs retain controls while scrolled through the same logical line', async t => {
+  const f = await fixture(t); f.ed.scroll = 100;
+  f.ed.getVisibleRanges = () => [{ startLineNumber: 2, endLineNumber: 2 }];
+  f.update(items('wrapped').slice(0, 1));
+  assert.equal(f.state().visible, true, 'A wrapped logical line may remain visible after its first visual row scrolls out');
+});
 
 for (const [name, position, visible] of [['start',2,true], ['last-change',10,true], ['anchor',3,true], ['unchanged',6,false], ['before',1,false], ['after',50,false]]) {
   test('native pointer target: ' + name, async t => {
@@ -67,9 +80,9 @@ test('one remaining change hides its counter and navigation', async t => {
   const f = await fixture(t); f.update(items('single').slice(0,1));
   for (const index of [0,1,2]) assert.equal(f.buttons[index].style.display,'none');
 });
-test('long lines collapse action labels but retain shortcut hints', async t => {
+test('[regression] long lines retain readable action labels and shortcut hints', async t => {
   const f = await fixture(t); f.ed.getOffsetForColumn=()=>1000; f.ed.emit('onDidLayoutChange');
-  for (const index of [3,4]) { assert.equal(f.buttons[index].reviewLabel.style.display,'none'); assert.equal(f.buttons[index].children.length,2); }
+  for (const index of [3,4]) { assert.notEqual(f.buttons[index].reviewLabel.style.display,'none'); assert.equal(f.buttons[index].children.length,2); }
 });
 test('command failure releases the lock and retains a diagnostic', async t => {
   const f = await fixture(t,()=>Promise.reject(new Error('test failure')));

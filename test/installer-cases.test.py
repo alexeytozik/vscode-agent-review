@@ -33,7 +33,8 @@ class InstallerCases(unittest.TestCase):
         cls.main_bytes = original_file(workbench, 'review-native-patch.json', 'workbench.desktop.main.js')
         record = workbench / 'review-native-patch.json'
         cls.product_bytes = (Path(json.loads(record.read_text())['backup']) / 'product.json').read_bytes() if record.exists() else (APP / 'product.json').read_bytes()
-        cls.vendor_bytes = original_file(VENDOR / 'out', 'review-patch.json', 'extension.js')
+        cls.version = json.loads((APP / 'package.json').read_text())['version']
+        cls.vendor_bytes = original_file(VENDOR / 'out', 'review-patch.json', 'extension.js') if (VENDOR / 'out/extension.js').exists() else None
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix='review-installer-cases.')
@@ -43,17 +44,22 @@ class InstallerCases(unittest.TestCase):
         self.app = self.root / 'Editor Test.app'
         self.resources = self.app / 'Contents/Resources/app'
         self.workbench = self.resources / 'out/vs/workbench'; self.workbench.mkdir(parents=True)
-        (self.resources / 'package.json').write_text(json.dumps({'version': '1.141.0'}))
+        (self.resources / 'package.json').write_text(json.dumps({'version': self.version}))
         self.main = self.workbench / 'workbench.desktop.main.js'; self.main.write_bytes(self.main_bytes); self.main.chmod(0o640)
         self.product = self.resources / 'product.json'; self.product.write_bytes(self.product_bytes)
         self.module = self.workbench / 'review-native.mjs'
         self.record = self.workbench / 'review-native-patch.json'
         self.vendor = self.root / 'vendor'; (self.vendor / 'out').mkdir(parents=True)
-        (self.vendor / 'package.json').write_bytes((VENDOR / 'package.json').read_bytes())
-        self.vendor_main = self.vendor / 'out/extension.js'; self.vendor_main.write_bytes(self.vendor_bytes)
+        if self.vendor_bytes is not None:
+            (self.vendor / 'package.json').write_bytes((VENDOR / 'package.json').read_bytes())
+        self.vendor_main = self.vendor / 'out/extension.js'
+        if self.vendor_bytes is not None:
+            self.vendor_main.write_bytes(self.vendor_bytes)
         self.settings = self.root / 'settings.json'; self.settings.write_text(json.dumps({'unrelated': 1, 'changeReview.scope': '/tmp/example'}))
 
     def run_installer(self, native, action):
+        if not native and self.vendor_bytes is None:
+            self.skipTest('The legacy vendor build is not installed')
         script = SOURCE / ('install-native.py' if native else 'install.py')
         arguments = [str(script), action, '--app', str(self.app)] if native else [str(script), action, '--extension', str(self.vendor), '--settings', str(self.settings)]
         with patch.object(sys, 'argv', arguments), patch.object(Path, 'home', return_value=self.home), contextlib.redirect_stdout(io.StringIO()):
@@ -109,6 +115,13 @@ def native_guard(name, installed, target):
         if installed: self.run_installer(True, 'apply')
         if target == 'version':
             (self.resources / 'package.json').write_text(json.dumps({'version': '99.0.0'}))
+        elif target == 'known-version':
+            version = '1.141.0' if self.version != '1.141.0' else '1.143.1'
+            (self.resources / 'package.json').write_text(json.dumps({'version': version}))
+        elif target in ['record-version', 'record-original']:
+            state = json.loads(self.record.read_text())
+            state['version' if target == 'record-version' else 'original'] = 'unknown'
+            self.record.write_text(json.dumps(state))
         elif target == 'unmanaged-module': self.module.write_text('unmanaged')
         else:
             file = {'main': self.main, 'product': self.product, 'module': self.module}.get(target)
@@ -122,7 +135,7 @@ def native_guard(name, installed, target):
     return run
 
 
-for name, installed, target in [('unknown-main', False, 'main'), ('unknown-product', False, 'product'), ('version', False, 'version'), ('unmanaged-module', False, 'unmanaged-module'), ('patched-main', True, 'main'), ('patched-product', True, 'product'), ('patched-module', True, 'module'), ('backup-main', True, 'backup-main'), ('backup-product', True, 'backup-product')]:
+for name, installed, target in [('unknown-main', False, 'main'), ('unknown-product', False, 'product'), ('version', False, 'version'), ('known-version', False, 'known-version'), ('record-version', True, 'record-version'), ('record-original', True, 'record-original'), ('unmanaged-module', False, 'unmanaged-module'), ('patched-main', True, 'main'), ('patched-product', True, 'product'), ('patched-module', True, 'module'), ('backup-main', True, 'backup-main'), ('backup-product', True, 'backup-product')]:
     setattr(InstallerCases, 'test_native_guard_' + name.replace('-', '_'), native_guard(name, installed, target))
 
 

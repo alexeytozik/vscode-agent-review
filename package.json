@@ -2,7 +2,7 @@
   "name": "agent-review",
   "displayName": "Agent Review",
   "description": "Review individual changes from each request directly in the editor.",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "publisher": "alexeytozik",
   "license": "MIT",
   "engines": {

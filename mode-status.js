@@ -8,30 +8,30 @@ function createModeStatus(vscode, enabled, connection = () => ({})) {
 
   function update() {
     const active = enabled(), state = connection();
-    let mode = 'OFF', icon = 'circle-slash', command = 'changeReview.toggle';
-    let tooltip = 'Agent Review is OFF. Click to turn it on.';
+    const mode = active ? 'ON' : 'OFF';
+    let icon = 'circle-slash', problem;
+    let tooltip = 'Agent Review is OFF. New changes are not recorded or queued. Pending reviews are preserved. Click to turn it on.';
     if (active) {
-      icon = 'warning'; command = 'changeReview.status';
+      icon = 'warning';
       if (state.available === false) {
-        mode = 'UNAVAILABLE'; tooltip = 'Open one local, trusted workspace folder to connect review.';
+        problem = 'Open one local, trusted workspace folder to connect review.';
       } else if (!state.connected) {
-        mode = 'SETUP'; command = 'changeReview.connect';
-        tooltip = 'Agent Review is enabled but not connected. New changes are not being recorded. Click to connect.';
+        problem = 'Review is not connected. New changes are not being recorded. Run Agent Review: Connect.';
       } else if (!state.lastEvent) {
-        mode = 'WAIT'; tooltip = 'Hooks are configured, but event delivery is not verified. Trust them in /hooks and start a new request. Click for status.';
+        problem = 'Hooks are configured, but event delivery is not verified. Trust them in /hooks and start a new request.';
       } else {
-        mode = 'ON'; icon = 'check'; command = 'changeReview.toggle';
-        tooltip = 'Agent Review is ON and receiving events. Only confirmed apply_patch changes are queued after editing; shell and Python writes need manual review. Click to turn it off.';
+        icon = 'check';
       }
+      tooltip = 'Agent Review is ON. Click to turn it off.\n' + (problem || 'Connection is receiving events. Only confirmed apply_patch changes are queued after editing; shell and Python writes need manual review.');
     }
-    item.command = command;
+    item.command = 'changeReview.toggle';
     item.text = `$(${icon}) Review: ${mode}`;
     item.tooltip = tooltip;
     item.accessibilityInformation = { label: item.tooltip };
     item.show();
     const changed = previous !== undefined && previous !== active;
     previous = active;
-    if (changed) vscode.window.showInformationMessage(mode === 'ON' || mode === 'OFF' ? `Agent Review is ${mode}.` : 'Agent Review: ' + tooltip);
+    if (changed) vscode.window.showInformationMessage(`Agent Review is ${mode}.` + (active && problem ? ' ' + problem : ''));
   }
 
   update();

@@ -94,12 +94,13 @@ class Controls {
     let anchor = Math.min(this.current.end + 1, model.getLineCount());
     let rect = this.editor.getScrolledVisiblePosition({ lineNumber: anchor, column: 1 });
     if (rect && rect.top + 22 > layout.height && this.current.start <= this.line && this.line <= this.current.end) { anchor = this.current.start; rect = this.editor.getScrolledVisiblePosition({ lineNumber: anchor, column: 1 }); }
-    if (!rect || rect.top < 0 || rect.top + 22 > layout.height) { this.dom.style.display = 'none'; return; }
+    if (!rect) { this.dom.style.display = 'none'; return; }
+    if (rect.top < 0 || rect.top + 22 > layout.height) {
+      const visible = this.editor.getVisibleRanges?.().some(range => range.startLineNumber <= this.current.end && range.endLineNumber >= this.current.start);
+      if (!visible || layout.height < 22) { this.dom.style.display = 'none'; return; }
+      rect = { ...rect, top: Math.max(0, Math.min(rect.top, layout.height - 22)) };
+    }
     const eof = this.current.end >= model.getLineCount();
-    const column = (model.getLineContent?.(anchor).length || 0) + 1;
-    const textWidth = this.editor.getOffsetForColumn?.(anchor, column) || 0;
-    const compact = textWidth + 32 > layout.contentWidth - 218;
-    for (const button of [this.reject, this.accept]) button.reviewLabel.style.display = compact ? 'none' : '';
     this.position = { preference: { top: Math.max(0, rect.top + (eof ? rect.height - 22 : 0)), left: layout.contentLeft } };
     this.dom.style.width = layout.contentWidth + 'px';
     this.bar.style.marginRight = ((layout.verticalScrollbarWidth || 14) + 4) + 'px';
@@ -132,9 +133,14 @@ class Controls {
   }
   inspect() {
     const rect = this.dom.getBoundingClientRect();
+    const style = node => this.dom.ownerDocument.defaultView?.getComputedStyle(node);
     return { key: this.key, visible: this.dom.style.display === 'block', busy: this.busy, invalidated: this.invalidated,
+      firstLineTop: this.editor.getScrolledVisiblePosition({ lineNumber: 1, column: 1 })?.top,
       position: this.position, items: this.items, current: this.current,
-      actions: [{ command: 'changeReview.reject', label: 'Undo', title: 'Reject change' }, { command: 'changeReview.accept', label: 'Keep', title: 'Accept change' }],
+      actions: [{ command: 'changeReview.reject', label: 'Undo', title: 'Reject change' }, { command: 'changeReview.accept', label: 'Keep', title: 'Accept change' }].map((action, index) => {
+        const button = [this.reject, this.accept][index];
+        return { ...action, labelVisible: (style(button.reviewLabel)?.display ?? button.reviewLabel.style.display) !== 'none', background: style(button)?.backgroundColor };
+      }),
       rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, height: this.bar.getBoundingClientRect().height, lastError: this.lastError };
   }
 }

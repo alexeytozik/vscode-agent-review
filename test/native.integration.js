@@ -18,12 +18,12 @@ async function run(root) {
   ] });
   await api.receive({ method: 'turn/completed', threadId: 'native', turnId: 'toolbar' });
   assert.equal(vscode.window.activeTextEditor.document.uri.fsPath, first);
-  async function visible(full) {
+  async function visible(full, check = () => true) {
     const uri = vscode.Uri.file(full).toString();
     const deadline = Date.now() + 4000;
     while (Date.now() < deadline) {
       const controls = await vscode.commands.executeCommand('_changeReview.nativeInspect', uri);
-      if (controls?.[0]?.visible && !controls[0].invalidated) return controls[0];
+      if (controls?.[0]?.visible && !controls[0].invalidated && check(controls[0])) return controls[0];
       await new Promise(resolve => setTimeout(resolve, 20));
     }
     assert.fail('Inline toolbar did not become visible: ' + path.basename(full));
@@ -52,7 +52,38 @@ async function run(root) {
   await vscode.commands.executeCommand('_changeReview.nativeAction', resumed.current.arg, 'reject', vscode.Uri.file(second).toString());
   assert.equal(await fs.readFile(second, 'utf8'), 'old\n');
   assert.equal(api.entries().length, 0);
+  const wrapped = path.join(root, 'wrapped.md'), oldParagraph = 'before '.repeat(2000) + '\n', newParagraph = 'after '.repeat(2000) + '\n';
+  await vscode.workspace.getConfiguration('editor').update('wordWrap', 'on', vscode.ConfigurationTarget.Workspace);
+  await fs.writeFile(wrapped, newParagraph);
+  await api.receive({ method: 'item/completed', type: 'fileChange', status: 'completed', threadId: 'native', turnId: 'wrapped', itemId: 'paragraph', changes: [
+    { path: wrapped, kind: { type: 'update' }, diff: createPatch(wrapped, oldParagraph, newParagraph), snapshot: { disk: newParagraph, text: newParagraph, mode: 0o644 } }
+  ] });
+  await api.receive({ method: 'turn/completed', threadId: 'native', turnId: 'wrapped' });
+  const editor = vscode.window.activeTextEditor, middle = new vscode.Position(0, 6000);
+  editor.selection = new vscode.Selection(middle, middle);
+  editor.revealRange(new vscode.Range(middle, middle), vscode.TextEditorRevealType.InCenter);
+  const paragraph = await visible(wrapped, state => state.firstLineTop < 0);
+  assert.ok(paragraph.position.preference.top >= 0, 'The controls stay inside the viewport while the first visual row is off screen');
+  await vscode.commands.executeCommand('_changeReview.nativeAction', paragraph.current.arg, 'reject', vscode.Uri.file(wrapped).toString());
+  assert.equal(await fs.readFile(wrapped, 'utf8'), oldParagraph, 'A long wrapped paragraph can be undone from its visible middle');
+  assert.equal(api.entries().length, 0);
   console.log('PASS: actual inline toolbar, no duplicate links, double/stale clicks, next hunk/file, OFF/ON and Keep/Undo bytes');
+  console.log('PASS: native controls remain usable in a long wrapped Markdown paragraph');
+  for (const extension of ['md', 'py']) {
+    const full = path.join(root, 'long-line.' + extension), original = '# notes\n\n# before\n# ' + 'unchanged '.repeat(120) + '\n\n';
+    const changed = original.replace('# before', '# after');
+    await fs.writeFile(full, changed);
+    await api.receive({ method: 'item/completed', type: 'fileChange', status: 'completed', threadId: 'native', turnId: extension, itemId: 'line', changes: [
+      { path: full, kind: { type: 'update' }, diff: createPatch(full, original, changed), snapshot: { disk: changed, text: changed, mode: 0o644 } }
+    ] });
+    await api.receive({ method: 'turn/completed', threadId: 'native', turnId: extension });
+    const controls = await visible(full);
+    assert.ok(controls.actions.every(action => action.labelVisible), 'Both labels remain readable beside a long line: ' + JSON.stringify(controls.actions));
+    await vscode.commands.executeCommand('_changeReview.nativeAction', controls.current.arg, 'reject', vscode.Uri.file(full).toString());
+    assert.equal(await fs.readFile(full, 'utf8'), original);
+    assert.equal(api.entries().length, 0);
+  }
+  console.log('PASS: readable Keep/Undo labels beside long Markdown and Python lines, with exact Undo bytes');
 }
 
 module.exports = { run: async () => {

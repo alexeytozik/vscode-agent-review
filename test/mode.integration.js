@@ -50,18 +50,20 @@ async function run() {
 
   await vscode.commands.executeCommand(item.command);
   assert.equal(api.isEnabled(), true);
-  assert.equal(item.text, '$(warning) Review: SETUP');
-  assert.equal(item.command, 'changeReview.connect');
+  assert.equal(item.text, '$(warning) Review: ON');
+  assert.equal(item.command, 'changeReview.toggle');
   assert.match(notices()[0], /not connected/);
   await api.hooks.connect();
-  assert.equal(item.text, '$(warning) Review: WAIT');
+  assert.equal(item.text, '$(warning) Review: ON');
+  assert.equal(item.command, 'changeReview.toggle');
+  assert.match(item.tooltip, /delivery is not verified/);
   await require('../hook-runner').handle(api.hooks.store, {hook_event_name:'UserPromptSubmit',session_id:'mode-connection',turn_id:'turn',cwd:await fs.realpath(root)});
   await api.hooks.drain();
   assert.equal(item.text, '$(check) Review: ON');
   await require('../hook-runner').handle(api.hooks.store, {hook_event_name:'Stop',session_id:'mode-connection',turn_id:'turn',cwd:await fs.realpath(root)});
   await api.hooks.drain();
   await api.hooks.disconnect();
-  assert.equal(item.text, '$(warning) Review: SETUP');
+  assert.equal(item.text, '$(warning) Review: ON');
   await api.setEnabled(true);
   assert.equal(notices().length, 1, 'Setting the same value does not repeat the notification');
 
@@ -79,7 +81,7 @@ async function run() {
   assert.equal(notices()[1], 'Agent Review is OFF.');
 
   await config.update('enabled', true, vscode.ConfigurationTarget.Workspace);
-  await waitFor(() => item.text === '$(warning) Review: SETUP');
+  await waitFor(() => item.text === '$(warning) Review: ON');
   assert.equal(notices().length, 3, 'An external setting change updates and notifies once');
   const globalValue = config.inspect('enabled').globalValue;
   await vscode.commands.executeCommand('changeReview.toggle');
@@ -89,6 +91,46 @@ async function run() {
   assert.equal(config.inspect('enabled').globalValue, globalValue, 'The workspace switch preserves global preferences');
   assert.equal(notices().length, 4);
   assert.equal(items.length, 1, 'Toggles reuse the existing item');
+
+  // Requests started while OFF remain skipped even if review is enabled mid-request.
+  await api.hooks.connect();
+  const cwd = await fs.realpath(root), handle = require('../hook-runner').handle;
+  const skipped = path.join(cwd, 'unreviewed.txt');
+  async function lifecycle(hook_event_name, turn_id, extra = {}) {
+    const lease = JSON.parse(await fs.readFile(path.join(api.hooks.store, 'connection.json'), 'utf8'));
+    assert.equal(lease.enabled, api.isEnabled(), 'Hook capture follows the chosen mode');
+    await handle(api.hooks.store, { cwd, session_id: 'mode-switch', turn_id, hook_event_name, ...extra });
+    await api.hooks.drain();
+  }
+  async function patch(turn, id, before, after) {
+    const event = { tool_name: 'apply_patch', tool_use_id: id, tool_input: { command: `*** Begin Patch\n*** Update File: ${skipped}\n@@\n-${before}\n+${after}\n*** End Patch` } };
+    await lifecycle('PreToolUse', turn, event);
+    await fs.writeFile(skipped, after + '\n');
+    await lifecycle('PostToolUse', turn, event);
+  }
+  await fs.writeFile(skipped, 'before\n');
+  await lifecycle('UserPromptSubmit', 'off');
+  await patch('off', 'off-change', 'before', 'without-review');
+  assert.equal(api.entries().length, 1, 'OFF does not queue new writes or resolve older decisions');
+  assert.equal(vscode.window.activeTextEditor.document.uri.fsPath, full, 'OFF does not jump to new writes');
+  assert.equal(api.controlItems(vscode.window.activeTextEditor.document).length, 0);
+  await vscode.commands.executeCommand(item.command);
+  assert.equal(api.isEnabled(), true);
+  await patch('off', 'mid-request', 'without-review', 'still-unreviewed');
+  await lifecycle('Stop', 'off');
+  assert.equal(api.entries().length, 1, 'Enabling mid-request does not capture a partial request');
+  assert.equal(await fs.readFile(skipped, 'utf8'), 'still-unreviewed\n');
+  await lifecycle('UserPromptSubmit', 'on');
+  await patch('on', 'on-change', 'still-unreviewed', 'needs-review');
+  await lifecycle('Stop', 'on');
+  const captured = api.entries().find(entry => entry.file.path === skipped);
+  assert.ok(captured && !captured.turn.running, 'The next ON request is ready for review');
+  assert.equal(vscode.window.activeTextEditor.document.uri.fsPath, skipped);
+  await api.decide({ turn: captured.turn.key, path: skipped, revision: captured.revision, hunk: captured.hunks[0].id }, 'reject');
+  assert.equal(await fs.readFile(skipped, 'utf8'), 'still-unreviewed\n', 'Undo preserves all changes made in OFF');
+  await vscode.commands.executeCommand(item.command);
+  assert.equal(api.isEnabled(), false);
+  assert.equal(api.entries().length, 1, 'The older pending review remains preserved');
   const storage = path.dirname(api.hooks.store);
   const legacy = path.join(path.dirname(storage), 'local-tools.change-review', 'request-review.json');
   await fs.mkdir(path.dirname(legacy), { recursive: true });
