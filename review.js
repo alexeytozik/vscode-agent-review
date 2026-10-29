@@ -8,11 +8,13 @@ const { decode } = require('./files');
 const { createModeStatus } = require('./mode-status');
 const { actions, decisionGate } = require('./public-controls');
 const { createConnection } = require('./hook-connection');
+const { createReviewView, viewState } = require('./review-view');
 
 function activate(context) {
   let model = new ReviewModel(), serial = Promise.resolve(), selected, timer, owned = false, resumeOnOpen = false, nativeLoaded = false;
   const ignoredTurns = new Set();
   const enabled = () => vscode.workspace.getConfiguration('changeReview').get('enabled', true);
+  const reviewTab = () => vscode.workspace.getConfiguration('changeReview').get('view', 'review') !== 'editor';
   let hooks;
   const supportedWorkspace = () => vscode.workspace.isTrusted && vscode.workspace.workspaceFolders?.length === 1 && vscode.workspace.workspaceFolders[0].uri.scheme === 'file';
   const modeStatus = createModeStatus(vscode, enabled, () => ({ available: supportedWorkspace(), ...hooks?.status() }));
@@ -28,6 +30,15 @@ function activate(context) {
   const report = e => vscode.window.showWarningMessage('Agent Review: ' + e.message);
   const exclusive = fn => { const job = serial.then(fn); serial = job.catch(() => {}); return job; };
   const keyFor = e => ({ turn: e.turn.key, path: e.file.path, revision: e.revision });
+  const reviewView = createReviewView(vscode, context, () => viewState(entries(), selected, root), async (action, arg) => {
+    requireEnabled();
+    if (action === 'accept' || action === 'reject') return decideOnce(arg, action, true);
+    return exclusive(async () => {
+      if (action === 'select') return show(arg);
+      if (action === 'next' || action === 'previous') return move(arg, action === 'next' ? 1 : -1);
+    });
+  });
+  context.subscriptions.push(reviewView);
   const virtual = (scheme, arg) => vscode.Uri.from({ scheme, path: arg.path, query: JSON.stringify({ turn: arg.turn }) });
   function argument(uri) { try { return { path: uri.fsPath || uri.path, turn: JSON.parse(uri.query).turn }; } catch { return; } }
   function entries() { return model.entries().sort((a, b) => a.turn.created - b.turn.created || a.file.path.localeCompare(b.file.path)); }
@@ -65,7 +76,7 @@ function activate(context) {
     vscode.commands.executeCommand('setContext', 'changeReview.enabled', enabled());
     vscode.commands.executeCommand('setContext', 'changeReview.nativeControls', nativeLoaded);
     vscode.commands.executeCommand('setContext', 'changeReview.hasPending', enabled() && pending.length > 0);
-    vscode.commands.executeCommand('setContext', 'changeReview.inEditor', enabled() && Boolean(selected && pending.some(e => e.turn.key === selected.turn && e.file.path === selected.path)));
+    vscode.commands.executeCommand('setContext', 'changeReview.inEditor', enabled() && !reviewTab() && Boolean(selected && pending.some(e => e.turn.key === selected.turn && e.file.path === selected.path)));
     for (const t of model.turns.values()) for (const f of t.files.values()) {
       const arg = { turn: t.key, path: f.path }; contentChanged.fire(virtual('review-base', arg)); contentChanged.fire(virtual('review-current', arg));
     }
@@ -77,7 +88,7 @@ function activate(context) {
     }
     const tracked = new Set(enabled() ? pending.map(e => e.file.path) : []);
     for (const [full, w] of watchers) if (!tracked.has(full)) { w.dispose(); watchers.delete(full); }
-    decorate(); lensesChanged.fire();
+    decorate(); lensesChanged.fire(); reviewView.update();
   }
   async function hideHover() {
     if ((await vscode.commands.getCommands(true)).includes('editor.action.hideHover')) await vscode.commands.executeCommand('editor.action.hideHover');
@@ -135,13 +146,13 @@ function activate(context) {
   }
   function decorate() {
     for (const editor of vscode.window.visibleTextEditors) {
-      const entry = enabled() ? documentEntry(editor.document) : undefined, additions = [], deletions = [];
+      const entry = enabled() && !reviewTab() ? documentEntry(editor.document) : undefined, additions = [], deletions = [];
       if (entry && !entry.file.error && !entry.turn.running) for (const h of entry.hunks) {
         const item = { range: hunkRange(editor.document, h) };
         (h.after && h.kind !== 'delete' ? additions : deletions).push(item);
       }
       editor.setDecorations(inserted, additions); editor.setDecorations(removed, deletions);
-      const items = nativeLoaded ? controlItems(editor.document) : [];
+      const items = nativeLoaded && !reviewTab() ? controlItems(editor.document) : [];
       editor.setDecorations(controls, items.length ? [{ range: new vscode.Range(0, 0, 0, 0), hoverMessage: new vscode.MarkdownString('<!-- change-review-controls:v1 -->' + JSON.stringify(items)) }] : []);
     }
   }
@@ -154,7 +165,7 @@ function activate(context) {
     });
   }
   function codeLenses(document) {
-    if (nativeLoaded) return [];
+    if (nativeLoaded || reviewTab()) return [];
     return actions(controlItems(document)).map(item => new vscode.CodeLens(new vscode.Range(item.line, 0, item.line, 0), { title: item.title, command: item.command, arguments: item.arguments }));
   }
   context.subscriptions.push(vscode.languages.registerCodeLensProvider([{ scheme: 'file' }, { scheme: 'review-current' }], { onDidChangeCodeLenses: lensesChanged.event, provideCodeLenses: codeLenses }));
@@ -167,10 +178,11 @@ function activate(context) {
       vscode.window.showInformationMessage(entries().length ? 'No changes are ready for review. Saved conflicts are available in Agent Review: Review Queue.' : 'No pending changes.');
       return;
     }
-    if (entry.file.error) { report(new Error(path.basename(entry.file.path) + ': ' + entry.file.error)); return; }
+    if (entry.file.error && !reviewTab()) { report(new Error(path.basename(entry.file.path) + ': ' + entry.file.error)); return; }
     const hunk = entry.hunks.find(h => h.id === arg?.hunk) || entry.hunks[0];
     await hideHover();
     selected = { ...keyFor(entry), hunk: hunk?.id }; update();
+    if (reviewTab()) { reviewView.show(); return; }
     const right = entry.file.expected === null ? virtual('review-current', selected) : vscode.Uri.file(entry.file.path);
     const doc = await vscode.workspace.openTextDocument(right);
     const editor = await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: false });
@@ -186,7 +198,7 @@ function activate(context) {
     decorate();
   }
   function hover(document, position) {
-    if (!enabled()) return;
+    if (!enabled() || reviewTab()) return;
     const entry = documentEntry(document);
     if (!entry || entry.turn.running) return;
     if (entry.file.error) {
@@ -219,6 +231,7 @@ function activate(context) {
     if (remaining.length) return show(remaining[Math.max(0, index) % remaining.length]);
     selected = undefined;
     update();
+    if (reviewTab() && reviewView.inspect().state) reviewView.show();
     await hideHover();
     const blocked = entries().some(e => e.turn.key === turn);
     vscode.window.showInformationMessage(blocked ? 'All available changes reviewed. This request still has saved conflicts.' : 'All recorded changes in this request reviewed.');
@@ -319,6 +332,7 @@ function activate(context) {
     await hooks?.update();
     if (!enabled()) {
       clearTimeout(timer);
+      reviewView.dispose();
       await hideHover();
       for (const t of model.turns.values()) if (t.running) ignoredTurns.add(t.key);
       update();
@@ -364,6 +378,7 @@ function activate(context) {
   register('disconnect', async () => { await hooks?.disconnect(); vscode.window.showInformationMessage('Review hooks disconnected. Saved decisions are preserved.'); });
   context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
     if (!editor) return;
+    if (reviewTab()) return;
     const a = argument(editor.document.uri);
     if (a && entryFor(a)) selected = a;
     const match = documentEntry(editor.document);
@@ -377,13 +392,16 @@ function activate(context) {
     vscode.workspace.onDidSaveTextDocument(d => { if (entries().some(a => a.file.path === d.uri.fsPath)) schedule(); }),
     vscode.window.onDidChangeVisibleTextEditors(decorate),
     vscode.window.onDidChangeTextEditorSelection(e => {
-      if (!e.kind || !enabled()) return;
+      if (!e.kind || !enabled() || reviewTab()) return;
       const entry = documentEntry(e.textEditor.document); if (!entry) return;
       const line = e.selections[0]?.active.line ?? 0;
       const hunk = entry.hunks.filter(h => h.newLine - 1 <= line).at(-1) || entry.hunks[0];
       selected = { ...keyFor(entry), hunk: hunk?.id };
     }),
-    vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('changeReview.enabled')) exclusive(modeChanged).catch(report); }),
+    vscode.workspace.onDidChangeConfiguration(e => {
+      if (e.affectsConfiguration('changeReview.enabled')) exclusive(modeChanged).catch(report);
+      if (e.affectsConfiguration('changeReview.view')) exclusive(async () => { reviewView.dispose(); await refresh(); }).catch(report);
+    }),
     { dispose() { clearTimeout(timer); for (const w of watchers.values()) w.dispose(); } });
 
   async function receive(event) {
@@ -423,11 +441,12 @@ function activate(context) {
     nativeLoaded = (await vscode.commands.getCommands()).includes('_changeReview.nativeInspect');
     update();
     if (!enabled() || !vscode.workspace.getConfiguration('changeReview').get('autoOpen', true) || !pendingQueue().length) return;
+    if (reviewTab()) { await show(pendingQueue()[0]); return; }
     const document = vscode.window.activeTextEditor?.document;
     if (document) await resumeReview(document);
     else resumeOnOpen = true;
   }));
   restored.catch(report);
-  return { ready: restored, receive, hooks, getState: () => model.save(), entries, hover, controlItems, codeLenses, isEnabled: enabled, setEnabled: value => exclusive(() => setEnabled(value)), acceptAll: () => exclusive(acceptAll), show: arg => exclusive(() => show(arg)), refresh: () => exclusive(refresh), decide: (arg, action) => decideOnce(arg, action, false), bulk: (arg, action, all) => exclusive(() => bulk(arg, action, all)) };
+  return { ready: restored, receive, hooks, reviewView, getState: () => model.save(), entries, hover, controlItems, codeLenses, isEnabled: enabled, setEnabled: value => exclusive(() => setEnabled(value)), acceptAll: () => exclusive(acceptAll), show: arg => exclusive(() => show(arg)), refresh: () => exclusive(refresh), decide: (arg, action) => decideOnce(arg, action, false), bulk: (arg, action, all) => exclusive(() => bulk(arg, action, all)) };
 }
 module.exports = { activate };

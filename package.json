@@ -2,7 +2,7 @@
   "name": "agent-review",
   "displayName": "Agent Review",
   "description": "Review individual changes from each request directly in the editor.",
-  "version": "0.6.3",
+  "version": "0.7.3",
   "publisher": "alexeytozik",
   "license": "MIT",
   "engines": {
@@ -136,7 +136,17 @@
         "changeReview.autoOpen": {
           "type": "boolean",
           "default": true,
-          "description": "Open pending changes in the editor when a request finishes."
+          "description": "Open the first pending change when a request finishes."
+        },
+        "changeReview.view": {
+          "type": "string",
+          "enum": [
+            "review",
+            "editor"
+          ],
+          "default": "review",
+          "scope": "window",
+          "description": "Use the separate review tab, or the compatibility controls in ordinary text editors."
         },
         "changeReview.enabled": {
           "type": "boolean",

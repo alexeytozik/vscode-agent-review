@@ -7,12 +7,13 @@ async function main(){
   console.log('Reports: '+root);
   const executable=process.env.REVIEW_VSCODE_EXECUTABLE||await downloadAndUnzipVSCode(process.env.REVIEW_EDITOR_VERSION||'stable');
   const live=process.argv.includes('--live');
-  const groups=live?['live']:process.argv.includes('--native')?['native']:process.argv.includes('--mode')?['mode']:['fixture','mode','edges','stress','empty','multi',...(process.env.REVIEW_VSIX?['package']:[])];
+  if(process.argv.includes('--package')&&!process.env.REVIEW_VSIX)throw Error('Set REVIEW_VSIX to test an installed package.');
+  const groups=live?['live']:process.argv.includes('--native')?['native']:process.argv.includes('--panel')?['panel']:process.argv.includes('--package')?['package']:process.argv.includes('--mode')?['mode']:['fixture','mode','edges','stress','empty','multi','panel',...(process.env.REVIEW_VSIX?['package']:[])];
   const results=[];
   for(const group of groups){
     const work=path.join(root,group),workspace=path.join(work,'workspace'),user=path.join(work,'user'),extensions=path.join(work,'extensions'),home=path.join(work,'home');
     await fs.mkdir(workspace,{recursive:true});await fs.mkdir(extensions);await fs.mkdir(home,{mode:0o700});await fs.mkdir(path.join(user,'User'),{recursive:true});
-    await fs.writeFile(path.join(user,'User/settings.json'),JSON.stringify({'workbench.startupEditor':'none','extensions.autoUpdate':false,'extensions.autoCheckUpdates':false,'telemetry.telemetryLevel':'off','files.autoSave':'off','editor.codeLens':true,'editor.hover.enabled':process.env.REVIEW_EDITOR_VERSION==='1.96.0'?false:'off','editor.hover.delay':10000,'changeReview.autoOpen':true,...(group==='mode'?{'changeReview.enabled':false}:{})}));
+    await fs.writeFile(path.join(user,'User/settings.json'),JSON.stringify({'workbench.startupEditor':'none','extensions.autoUpdate':false,'extensions.autoCheckUpdates':false,'telemetry.telemetryLevel':'off','files.autoSave':'off','editor.codeLens':true,'editor.hover.enabled':process.env.REVIEW_EDITOR_VERSION==='1.96.0'?false:'off','editor.hover.delay':10000,'changeReview.autoOpen':true,...(['fixture','mode','edges','stress','native','live'].includes(group)?{'changeReview.view':'editor'}:{}),...(group==='mode'?{'changeReview.enabled':false}:{})}));
     if(live){const auth=path.join(process.env.CODEX_HOME||path.join(os.homedir(),'.codex'),'auth.json');try{await fs.copyFile(auth,path.join(home,'auth.json'));await fs.chmod(path.join(home,'auth.json'),0o600);}catch(error){if(error.code!=='ENOENT')throw error;}}
     let development=source;
     if(group==='package'){
@@ -20,7 +21,7 @@ async function main(){
       if(installed.status!==0)throw Error('VSIX install failed: '+installed.stdout+installed.stderr);
       development=path.join(work,'harness');await fs.mkdir(development);await fs.writeFile(path.join(development,'package.json'),JSON.stringify({name:'review-check',publisher:'local-tests',version:'0.0.0',engines:{vscode:'^1.96.0'},main:'./index.js'}));await fs.writeFile(path.join(development,'index.js'),'exports.activate=()=>{};');
     }
-    const phases=group==='fixture'?['fixture','restore','resume']:group==='mode'?['mode','mode-restore']:[group];
+    const phases=group==='fixture'?['fixture','restore','resume']:group==='panel'?['panel','panel-restore','panel-resume']:group==='mode'?['mode','mode-restore']:[group];
     try{for(const phase of phases){
       const module=group==='live'?'hook-live':group==='package'?'package':group==='fixture'?'agent':group==='multi'?'empty':group;
       const workspaceArg=group==='multi'?path.join(work,'multiple.code-workspace'):workspace;

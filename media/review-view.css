@@ -1,0 +1,37 @@
+:root { color-scheme: light dark; --review-added-background: #2ea04326; --review-removed-background: #f8514926; --review-added-foreground: #3fb950; --review-removed-foreground: #f85149; }
+body.vscode-light, body.vscode-high-contrast-light { --review-added-background: #2da44e26; --review-removed-background: #ffebe9; --review-added-foreground: #1a7f37; --review-removed-foreground: #cf222e; }
+html, body { height: 100%; }
+body { margin: 0; display: flex; flex-direction: column; overflow: hidden; color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); font: var(--vscode-font-size) var(--vscode-font-family); }
+header { display: flex; align-items: center; gap: 8px; padding: 4px 12px; border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder, var(--vscode-panel-border)); background: var(--vscode-editor-background); flex-shrink: 0; min-width: 0; }
+.location { flex: 1; min-width: 0; }
+#path { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-breadcrumb-foreground, var(--vscode-editor-foreground)); }
+#counter { color: var(--vscode-descriptionForeground); white-space: nowrap; min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; font-size: 12px; }
+nav { display: flex; align-items: center; gap: 2px; }
+button { min-height: 26px; padding: 2px 8px; border: 1px solid var(--vscode-contrastBorder, transparent); border-radius: 3px; cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap; color: var(--vscode-editor-foreground); background: transparent; }
+button:hover { background: var(--vscode-toolbar-hoverBackground, #8882); }
+nav button { min-width: 24px; padding: 0 5px; font-size: 20px; line-height: 1; }
+button:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
+button:disabled { cursor: default; opacity: .45; }
+main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#change { overflow: hidden; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#code { overflow: auto; flex: 1; min-height: 0; padding: 12px 0 32px; }
+#code:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.actions { display: flex; gap: 2px; align-items: center; }
+.actions button span { font-size: 16px; vertical-align: -1px; margin-right: 2px; }
+.keep { color: var(--review-added-foreground); }
+.undo { color: var(--review-removed-foreground); }
+.code-block { display: grid; grid-template-columns: 52px 18px minmax(max-content, 1fr); width: max-content; min-width: 100%; font: var(--vscode-editor-font-size) var(--vscode-editor-font-family); font-weight: var(--vscode-editor-font-weight); line-height: 1.5; }
+.hunk { width: max-content; min-width: 100%; cursor: pointer; }
+.hunk.selected { box-shadow: inset 3px 0 var(--vscode-editor-foreground); }
+.hunk.selected .number { color: var(--vscode-editor-foreground); }
+.number, .marker { user-select: none; color: var(--vscode-editorLineNumber-foreground); text-align: right; padding-right: 10px; }
+.marker { padding-right: 6px; }
+pre { margin: 0; padding: 0 12px 0 0; white-space: pre; tab-size: 4; font: inherit; }
+.added { background: var(--review-added-background); }
+.removed { background: var(--review-removed-background); }
+.added .marker { color: var(--review-added-foreground); }
+.removed .marker { color: var(--review-removed-foreground); }
+#error { margin: 8px 12px; color: var(--vscode-errorForeground); white-space: pre-wrap; }
+#empty, .empty-file { padding: 20px; opacity: .7; }
+[hidden] { display: none !important; }
+@media (max-width: 420px) { header { flex-wrap: wrap; gap: 2px 8px; } .location { flex-basis: 100%; } nav { margin-right: auto; } }

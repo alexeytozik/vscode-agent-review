@@ -1,3 +1,26 @@
+# 0.7.3 — Preview
+
+- Keep additions and Keep green, removals and Undo red regardless of theme diff colors.
+
+# 0.7.2 — Preview
+
+- Reduce the review toolbar to the file name, per-file change count, navigation and Undo/Keep.
+- Show code across the full editor surface without cards, captions or extra controls.
+- Preserve saved reviews through existing commands and keep conflict guards active.
+
+# 0.7.1 — Preview
+
+- Show complete files with all pending changes highlighted in the review tab.
+- Scroll to the selected change and allow selecting another changed block by clicking it.
+- Keep large file text intact and reuse its rendered content during navigation.
+
+# 0.7.0 — Preview
+
+- Open a dedicated review tab with persistent Undo/Keep and automatic change navigation.
+- Use public webview APIs without modifying the editor installation.
+- Preserve saved queues, conflict guards, dirty buffers and the ON/OFF switch.
+- Retain ordinary-editor controls through the optional compatibility setting.
+
 # 0.6.3 — Preview
 
 - Support the local inline toolbar on verified VS Code 1.143.1 builds.
