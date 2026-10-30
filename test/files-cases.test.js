@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { allowed, resolveInside, assertSafe, decode, scan, MAX_FILE_BYTES } = require('../files');
+const { allowed, createPathPolicy, resolveInside, assertSafe, decode, scan, MAX_FILE_BYTES } = require('../files');
 
 async function directory(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'review-files.'));
@@ -18,6 +18,14 @@ for (const name of ['.env', '.ENV', '.envrc', 'nested/.AWS/credentials', 'nested
 for (const name of ['file.txt', 'nested/manifest.json', 'environment.py']) {
   test('snapshot permits ordinary path: ' + name, () => assert.equal(allowed(name), true));
 }
+for (const name of ['.npmrc', 'nested/.netrc', 'kubeconfig', 'nested/TOKEN.SECRET', '.pypirc', '.pgpass', '.docker/config.json', 'secrets.yaml', 'secrets.yml', 'secrets.json']) test('R17 exact credential default: ' + name, () => assert.equal(allowed(name), false));
+for (const name of ['secrets.example.yaml', 'terraform.tfvars', 'manifests/service.yaml', 'npmrc.example', 'kubeconfig.example']) test('R17 ordinary project text remains eligible: ' + name, () => assert.equal(allowed(name), true));
+test('R17 user globs are root-relative, include dotfiles and cannot re-enable default credentials', () => {
+  const policy = createPathPolicy(['private/**', '**/*.secret.txt', '**/.local-*']);
+  for (const name of ['private/file.yaml', 'nested/token.secret.txt', '.local-settings', 'nested/.local-key', '.npmrc']) assert.equal(policy.allowed(name), false, name);
+  for (const name of ['src/file.yaml', 'private-example.txt', 'terraform.tfvars']) assert.equal(policy.allowed(name), true, name);
+  for (const patterns of [['!**/.npmrc'], ['/private/*'], ['../outside/*'], [null], 'private/*']) assert.throws(() => createPathPolicy(patterns), /exclusion/);
+});
 for (const value of ['', null, '..', '../outside', '/absolute', 'invalid\0name']) {
   test('path guard rejects ' + JSON.stringify(value), () => assert.throws(() => resolveInside('/tmp/example', value)));
 }

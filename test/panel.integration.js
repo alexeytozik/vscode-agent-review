@@ -22,9 +22,9 @@ async function run(root) {
   let turn = 0;
   async function inject(files, complete = true) {
     const turnId = 'turn-' + ++turn, records = [];
-    for (const [name, before, after] of files) {
+    for (const [name, before, after, diff] of files) {
       const full = path.join(root, name); await fs.writeFile(full, after);
-      records.push({ path: full, kind: { type: 'update' }, diff: createPatch(full, before, after), snapshot: { disk: after, text: after, mode: 0o644 } });
+      records.push({ path: full, kind: { type: 'update' }, diff: diff ?? createPatch(full, before, after), snapshot: { disk: after, text: after, mode: 0o644 } });
     }
     await api.receive({ method: 'item/completed', type: 'fileChange', status: 'completed', threadId: 'panel', turnId, itemId: 'changes', changes: records });
     if (complete) await api.receive({ method: 'turn/completed', threadId: 'panel', turnId });
@@ -33,6 +33,9 @@ async function run(root) {
   const phase = process.env.REVIEW_TEST_PHASE;
   if (phase !== 'panel') {
     const saved = JSON.parse(await fs.readFile(path.join(root, 'expected-panel.json'), 'utf8'));
+    const complex = api.entries().find(e => e.file.path === path.join(root, 'complex.txt'));
+    assert.match(complex?.file.error, /diff is too large/);
+    assert.equal(complex.hunks.length, 0);
     if (phase === 'panel-restore') {
       assert.equal(api.isEnabled(), false); assert.equal(api.reviewView.inspect().visible, false);
       assert.ok(api.entries().some(e => e.file.path === saved.path));
@@ -106,6 +109,27 @@ async function run(root) {
   await assert.rejects(api.reviewView.receive({ action: 'open', id: api.reviewView.inspect().state.id }), /Unknown/);
   await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(path.join(root, 'conflict.txt')));
   await api.show(conflict.arg); assert.match((await state()).error, /overlap/);
+
+  const before = 'old\n'.repeat(6000), after = 'new\n'.repeat(6000);
+  const patch = '--- complex.txt\n+++ complex.txt\n@@ -1,6000 +1,6000 @@\n' + '-old\n'.repeat(6000) + '+new\n'.repeat(6000);
+  const safeBefore = '\uFEFFстарое\r\nlast', safeAfter = '\uFEFFновое\r\nlast';
+  await inject([['complex.txt', before, after, patch], ['safe-keep.txt', safeBefore, safeAfter], ['safe-undo.txt', safeBefore, safeAfter]]);
+  assert.equal((await state()).path, 'safe-keep.txt'); await action('accept');
+  assert.deepEqual(await fs.readFile(path.join(root, 'safe-keep.txt')), Buffer.from(safeAfter));
+  assert.equal((await state()).path, 'safe-undo.txt'); await action('reject');
+  assert.deepEqual(await fs.readFile(path.join(root, 'safe-undo.txt')), Buffer.from(safeBefore));
+  const complex = api.entries().find(e => e.file.path === path.join(root, 'complex.txt'));
+  const complexArg = { turn: complex.turn.key, path: complex.file.path, revision: complex.revision };
+  await api.show(complexArg);
+  const paused = await state(); assert.match(paused.error, /diff is too large/);
+  assert.equal(paused.fileChangeCount, 0);
+  assert.equal(paused.blocks.map(block => block.text).join(''), after);
+  await assert.rejects(api.reviewView.receive({ action: 'reject', id: paused.id }), /diff is too large/);
+  api.reviewView.dispose(); await api.show(complexArg); await api.refresh();
+  assert.match((await state()).error, /diff is too large/);
+  assert.equal(await fs.readFile(complex.file.path, 'utf8'), after);
+  console.log('PASS: complex diff pauses one file; Keep/Undo on safe neighbours preserve BOM/CRLF/Unicode and the full paused file reopens');
+
   await inject([['pending.txt', 'before\n', 'after\n']]);
   const pending = await state(); api.reviewView.dispose();
   assert.equal(await api.reviewView.receive({ action: 'accept', id: pending.id }), false);

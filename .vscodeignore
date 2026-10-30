@@ -2,7 +2,10 @@
 .github/**
 test/**
 coverage/**
+.playwright-cli/**
+output/**
 PLANS.md
+CODEX_PLAN.md
 VALIDATION.md
 AGENTS.md
 AGENTS.override.md

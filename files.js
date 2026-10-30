@@ -2,27 +2,49 @@
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const picomatch = require('picomatch');
 
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_FILES = 2000;
 const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 const excludedDirs = new Set(['.git', '.hg', '.svn', 'node_modules', '.venv', 'venv', '__pycache__', '.cache', 'target', 'dist', 'build', '.ssh', '.aws', '.kube', '.gnupg']);
-
-function allowed(relative) {
-  const parts = relative.split(/[\\/]/);
-  return !parts.some(p => excludedDirs.has(p.toLowerCase())) && !parts.some(p => /^\.env(?:\.|rc$|$)/i.test(p) || /^(?:auth|credentials)\.json$/i.test(p) || /^id_(?:rsa|ed25519|ecdsa|dsa)(?:\.pub)?$/i.test(p) || /\.(?:pem|key|p12|pfx|kubeconfig)$/i.test(p));
+const credentialNames = new Set(['.npmrc', '.netrc', 'kubeconfig', 'token.secret', '.pypirc', '.pgpass', 'secrets.yaml', 'secrets.yml', 'secrets.json']);
+const credentialDirs = new Set(['.ssh', '.aws', '.kube', '.gnupg']);
+function credentialPath(full) {
+  const parts = full.split(/[\\/]/).map(part => part.toLowerCase());
+  return parts.some(part => credentialDirs.has(part)) || parts.some((part, index) => part === '.docker' && parts[index + 1] === 'config.json');
 }
 
-function resolveInside(root, relative) {
+function allowed(relative) {
+  if (typeof relative !== 'string' || !relative || relative.includes('\0') || path.isAbsolute(relative)) return false;
+  const parts = relative.split(/[\\/]/);
+  return !parts.some(p => p === '..' || excludedDirs.has(p.toLowerCase()) || credentialNames.has(p.toLowerCase())) && !parts.some(p => /^\.env(?:\.|rc$|$)/i.test(p) || /^(?:auth|credentials)\.json$/i.test(p) || /^id_(?:rsa|ed25519|ecdsa|dsa)(?:\.pub)?$/i.test(p) || /\.(?:pem|key|p12|pfx|kubeconfig)$/i.test(p)) && !/(^|\/)\.docker\/config\.json$/i.test(parts.join('/'));
+}
+function createPathPolicy(patterns = []) {
+  if (!Array.isArray(patterns) || patterns.length > 128 || patterns.some(p => typeof p !== 'string' || !p || p.length > 1024 || p.includes('\0') || p.startsWith('!') || path.isAbsolute(p) || p.split(/[\\/]/).includes('..'))) throw new Error('Invalid review exclusion patterns. Use up to 128 relative globs without negation.');
+  const matches = patterns.map(pattern => picomatch(pattern.replaceAll('\\', '/').replace(/^\.\//, ''), { dot: true, nonegate: true, maxLength: 1024 }));
+  return { allowed: relative => allowed(relative) && !matches.some(match => match(relative.replaceAll('\\', '/'))) };
+}
+function allowedFull(root, full, policy, aliases = []) {
+  if (typeof full !== 'string' || !path.isAbsolute(full) || full.includes('\0') || credentialPath(full)) return false;
+  return [root, ...aliases].some(base => {
+    if (!base) return false;
+    const relative = path.relative(base, full);
+    return Boolean(relative) && relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative) && policy.allowed(relative);
+  });
+}
+
+function resolveInside(root, relative, policy = { allowed }) {
   if (typeof relative !== 'string' || !relative || relative.includes('\0') || path.isAbsolute(relative)) throw new Error('Invalid path.');
   const full = path.resolve(root, relative);
   const back = path.relative(root, full);
-  if (!back || back === '..' || back.startsWith('..' + path.sep) || path.isAbsolute(back) || !allowed(back)) throw new Error('The path is outside the selected folder.');
+  if (!back || back === '..' || back.startsWith('..' + path.sep) || path.isAbsolute(back)) throw new Error('The path is outside the selected folder.');
+  if (!policy.allowed(back) || credentialPath(full)) throw Object.assign(new Error('The path is protected or excluded from review.'), { code: 'REVIEW_EXCLUDED' });
   return full;
 }
 
-async function assertSafe(root, relative) {
-  const full = resolveInside(root, relative);
+async function assertSafe(root, relative, policy = { allowed }) {
+  const full = resolveInside(root, relative, policy);
   let existing = full;
   while (true) {
     try {
@@ -40,7 +62,7 @@ async function assertSafe(root, relative) {
   const realExisting = await fs.realpath(existing);
   const back = path.relative(realRoot, realExisting);
   if (back === '..' || back.startsWith('..' + path.sep) || path.isAbsolute(back)) throw new Error('The symbolic link points outside the selected folder.');
-  if (!allowed(back)) throw new Error('The resolved path is excluded from review.');
+  if (credentialPath(realExisting) || credentialPath(path.resolve(realRoot, relative)) || back && !policy.allowed(back)) throw Object.assign(new Error('The resolved path is excluded from review.'), { code: 'REVIEW_EXCLUDED' });
   return full;
 }
 
@@ -93,4 +115,4 @@ async function scan(root, documents = new Map()) {
   return { files, skipped };
 }
 
-module.exports = { MAX_FILE_BYTES, allowed, resolveInside, assertSafe, decode, scan };
+module.exports = { MAX_FILE_BYTES, allowed, createPathPolicy, allowedFull, resolveInside, assertSafe, decode, scan };

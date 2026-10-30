@@ -4,6 +4,7 @@ html, body { height: 100%; }
 body { margin: 0; display: flex; flex-direction: column; overflow: hidden; color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); font: var(--vscode-font-size) var(--vscode-font-family); }
 header { display: flex; align-items: center; gap: 8px; padding: 4px 12px; border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder, var(--vscode-panel-border)); background: var(--vscode-editor-background); flex-shrink: 0; min-width: 0; }
 .location { flex: 1; min-width: 0; }
+#kind { font-size: 11px; color: var(--vscode-descriptionForeground); }
 #path { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-breadcrumb-foreground, var(--vscode-editor-foreground)); }
 #counter { color: var(--vscode-descriptionForeground); white-space: nowrap; min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; font-size: 12px; }
 nav { display: flex; align-items: center; gap: 2px; }
@@ -21,6 +22,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .keep { color: var(--review-added-foreground); }
 .undo { color: var(--review-removed-foreground); }
 .code-block { display: grid; grid-template-columns: 52px 18px minmax(max-content, 1fr); width: max-content; min-width: 100%; font: var(--vscode-editor-font-size) var(--vscode-editor-font-family); font-weight: var(--vscode-editor-font-weight); line-height: 1.5; }
+.render-chunk { content-visibility: auto; contain-intrinsic-block-size: auto calc(var(--review-lines) * 1.5em); }
 .hunk { width: max-content; min-width: 100%; cursor: pointer; }
 .hunk.selected { box-shadow: inset 3px 0 var(--vscode-editor-foreground); }
 .hunk.selected .number { color: var(--vscode-editor-foreground); }

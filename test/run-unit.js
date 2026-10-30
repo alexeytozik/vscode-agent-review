@@ -1,0 +1,12 @@
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const migration = new Set(['bridge-cases.test.js', 'bridge-mode.test.js', 'native-cases.test.js', 'native.test.js']);
+const args = process.argv.slice(2), legacy = args.includes('--migration'), all = args.includes('--all');
+const files = fs.readdirSync(__dirname).filter(name => name.endsWith('.test.js') && (all || (legacy ? migration.has(name) : !migration.has(name)))).sort().map(name => path.join(__dirname, name));
+if (!files.length) throw new Error('No test files selected.');
+console.log(legacy ? 'Migration-only JavaScript checks' : all ? 'Maintained and migration JavaScript checks' : 'Maintained runtime checks');
+const result = spawnSync(process.execPath, ['--test', ...args.filter(arg => !['--migration', '--all'].includes(arg)), ...files], { stdio: 'inherit', env: process.env });
+if (result.error) throw result.error;
+process.exitCode = result.status ?? 1;

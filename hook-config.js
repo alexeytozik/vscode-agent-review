@@ -16,6 +16,24 @@ function hookCommand(executable, script, storage, platform = process.platform) {
   const args = [executable, script, storage].map(p => quote(p, platform)).join(' ');
   return platform === 'win32' ? 'set "ELECTRON_RUN_AS_NODE=1" && ' + args : 'ELECTRON_RUN_AS_NODE=1 ' + args;
 }
+function commandArgs(command) {
+  if (typeof command !== 'string' || !command.startsWith('ELECTRON_RUN_AS_NODE=1 ')) return;
+  const args = []; let rest = command.slice('ELECTRON_RUN_AS_NODE=1 '.length);
+  while (rest) {
+    if (rest[0] !== "'") return;
+    let value = '', offset = 1, closed = false;
+    while (offset < rest.length) {
+      if (rest.slice(offset, offset + 4) === "'\\''") { value += "'"; offset += 4; }
+      else if (rest[offset] === "'") { offset++; closed = true; break; }
+      else value += rest[offset++];
+    }
+    if (!closed) return;
+    args.push(value); rest = rest.slice(offset);
+    if (rest && rest[0] !== ' ') return;
+    rest = rest.slice(1);
+  }
+  return args.length === 3 && hookCommand(...args, 'linux') === command ? args : undefined;
+}
 function configure(input, command, previous = [], remove = false) {
   const result = JSON.parse(JSON.stringify(input));
   if (!result || typeof result !== 'object' || Array.isArray(result) || result.hooks && (typeof result.hooks !== 'object' || Array.isArray(result.hooks))) throw new Error('Unsupported hooks configuration.');
@@ -33,4 +51,4 @@ function configure(input, command, previous = [], remove = false) {
   }
   return result;
 }
-module.exports = { quote, hookCommand, configure, isConfigured };
+module.exports = { quote, hookCommand, commandArgs, configure, isConfigured };

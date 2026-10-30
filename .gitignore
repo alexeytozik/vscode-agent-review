@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *.vsix
 coverage/
+.playwright-cli/
+output/
 .DS_Store
 
 AGENTS.md

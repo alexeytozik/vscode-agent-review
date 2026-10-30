@@ -89,10 +89,29 @@ test('unsupported workspace explains why review cannot connect', () => {
   assert.match(f.item.tooltip, /one local/i);
 });
 
+test('quarantined events keep coverage visibly incomplete after later delivery', () => {
+  const f = fixture(true, { connected: true, lastEvent: 1, incomplete: true });
+  assert.equal(f.item.text, '$(warning) Review: ON');
+  assert.match(f.item.tooltip, /coverage is incomplete/);
+  assert.match(f.item.tooltip, /manually/);
+  f.set(false);
+  assert.equal(f.item.text, '$(circle-slash) Review: OFF');
+});
+
 test('enabling without a connection reports both the mode and connection problem', () => {
   const f = fixture(false, {}); f.set(true);
   assert.match(f.messages[0], /is ON/);
   assert.match(f.messages[0], /not connected/i);
+});
+test('R16 event delivery, confirmed patch, counts and auto-open reason are separate facts', () => {
+  const state = { connected: true, lastEvent: 1, ready: 2, blocked: 1, running: 3, skipped: 4, autoOpenReason: 'disabled in settings' }, f = fixture(true, state);
+  assert.match(f.item.tooltip, /Last lifecycle event: 1970/);
+  assert.match(f.item.tooltip, /Last confirmed queued patch: not observed/);
+  assert.match(f.item.tooltip, /2 ready blocks, 1 paused files, 3 running files/);
+  assert.match(f.item.tooltip, /4 unsupported or skipped operations/); assert.match(f.item.tooltip, /disabled in settings/);
+  state.lastPatch = 2; f.status.update(); assert.match(f.item.tooltip, /Last confirmed queued patch: 1970/);
+  assert.equal(f.item.text, '$(check) Review: ON'); assert.equal(f.messages.length, 0);
+  for (let i = 0; i < 100; i++) f.status.update(); assert.equal(f.item.text, '$(check) Review: ON', 'Idle time does not invent a disconnection');
 });
 
 for (const state of [{ available: false }, { connected: false }, { connected: true }, { connected: true, lastEvent: 1 }]) {

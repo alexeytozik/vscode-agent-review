@@ -1,6 +1,6 @@
 'use strict';
 const path = require('node:path');
-const { randomBytes } = require('node:crypto');
+const { randomBytes, createHash } = require('node:crypto');
 const { lines } = require('./core');
 
 function fileBlocks(entry) {
@@ -17,9 +17,9 @@ function fileBlocks(entry) {
   return blocks;
 }
 
-function viewState(entries, selected, root) {
+function viewState(entries, selected, root, includeBlocks = true, outcome) {
   const entry = entries.find(e => e.turn.key === selected?.turn && e.file.path === selected?.path);
-  if (!entry) return { complete: true, pending: entries.length, blocks: [] };
+  if (!entry) return { complete: true, pending: entries.length, contentId: 'empty', ...(outcome ? { outcome } : {}), ...(includeBlocks ? { blocks: [] } : {}) };
   const hunk = entry.hunks.find(h => h.id === selected.hunk) || entry.hunks[0];
   const request = entries.filter(e => e.turn.key === entry.turn.key && !e.turn.running);
   const queue = request.filter(e => !e.file.error).flatMap(e => e.hunks.map(h => ({ path: e.file.path, id: h.id })));
@@ -32,21 +32,35 @@ function viewState(entries, selected, root) {
     fileIndex: request.indexOf(entry) + 1, fileCount: request.length,
     fileChangeIndex: entry.hunks.indexOf(hunk) + 1, fileChangeCount: entry.hunks.length,
     index: queue.findIndex(h => h.path === entry.file.path && h.id === hunk?.id) + 1, total: queue.length,
+    blocked: request.filter(e => e.file.error).length,
+    canNavigate: !entry.turn.running && (entry.file.error ? queue.length > 0 : queue.length > 1),
     kind: hunk?.kind, error: entry.file.error || (entry.turn.running ? 'This request is still running.' : undefined),
-    arg, blocks: fileBlocks(entry)
+    arg, contentId: createHash('sha256').update(JSON.stringify([arg.turn, arg.path, arg.revision])).digest('hex'),
+    ...(includeBlocks ? { blocks: fileBlocks(entry) } : {})
   };
 }
 
 function createReviewView(vscode, context, state, run) {
-  let panel, current, generation = 0, busy = false, ready = false, rendered;
-  function publish(error) {
+  let panel, current, content, sentContentId, generation = 0, busy = false, ready = false, rendered;
+  function publish(error, retry = false) {
     if (!panel) return;
-    current = { ...state(), id: ++generation, busy, ...(error ? { error } : {}) };
-    Promise.resolve(panel.webview.postMessage({ type: 'state', ...current })).catch(() => {});
+    const summary = state(false);
+    if (content?.id !== summary.contentId) content = { id: summary.contentId, blocks: state(true).blocks };
+    current = { ...summary, blocks: content.blocks, id: ++generation, busy, ...(error ? { error } : {}) };
+    const { blocks, ...metadata } = current;
+    const include = sentContentId !== content.id, target = panel, id = content.id;
+    if (include) sentContentId = id;
+    const failed = () => {
+      if (panel !== target || content?.id !== id) return;
+      sentContentId = undefined;
+      // One immediate retry; a later ready/update/resync can retry again.
+      if (!retry) publish(error, true);
+    };
+    Promise.resolve().then(() => target.webview.postMessage({ type: 'state', ...metadata, ...(include ? { blocks } : {}) })).then(ok => { if (!ok) failed(); }, failed);
   }
   async function receive(message) {
     if (!panel || !message || typeof message !== 'object') return false;
-    if (message.action === 'ready') { ready = true; publish(); return true; }
+    if (message.action === 'ready' || message.action === 'resync') { ready = true; sentContentId = undefined; publish(); return true; }
     if (message.action === 'rendered') {
       if (message.id === current?.id) rendered = message.id;
       return true;
@@ -55,7 +69,7 @@ function createReviewView(vscode, context, state, run) {
     if (!actions.includes(message.action)) throw new Error('Unknown review action.');
     if (busy) return false;
     if (message.id !== current?.id) { publish(); return false; }
-    if (!current.arg || current.error) throw new Error(current.error || 'No change selected.');
+    if (!current.arg || (current.error && !['next', 'previous'].includes(message.action))) throw new Error(current.error || 'No change selected.');
     let arg = current.arg;
     if (message.action === 'select') {
       if (typeof message.hunk !== 'string' || !current.blocks.some(block => block.hunk === message.hunk)) throw new Error('This change is no longer available.');
@@ -79,20 +93,20 @@ function createReviewView(vscode, context, state, run) {
     const js = web.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'review-view.js'));
     const css = web.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'review-view.css'));
     web.onDidReceiveMessage(message => receive(message).catch(error => publish(error.message)));
-    panel.onDidDispose(() => { panel = undefined; ready = false; rendered = undefined; current = undefined; });
+    panel.onDidDispose(() => { panel = undefined; ready = false; rendered = undefined; current = undefined; content = undefined; sentContentId = undefined; });
     web.html = `<!doctype html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${web.cspSource}; script-src 'nonce-${nonce}';">
 <link rel="stylesheet" href="${css}"><title>Agent Review</title></head><body>
-<header><div class="location"><span id="path"></span></div>
+<header><div class="location"><span id="path"></span><span id="kind" hidden></span></div>
 <nav id="navigation" aria-label="Review navigation">
 <button data-action="previous" title="Previous change (Alt+[)" aria-label="Previous change">‹</button>
-<span id="counter" role="status"></span>
+<span id="counter" role="status" aria-live="polite" aria-atomic="true"></span>
 <button data-action="next" title="Next change (Alt+])" aria-label="Next change">›</button>
 </nav>
 <div id="actions" class="actions"><button data-action="reject" class="undo" title="Undo change (Cmd/Ctrl+Alt+N)"><span aria-hidden="true">×</span> Undo</button>
 <button data-action="accept" class="keep" title="Keep change (Cmd/Ctrl+Alt+Y)"><span aria-hidden="true">✓</span> Keep</button></div></header>
-<p id="error" role="alert" hidden></p><main><div id="empty" role="status" hidden></div>
+<p id="error" role="alert" hidden></p><main><div id="empty" role="status" tabindex="-1" hidden></div>
 <section id="change" aria-label="File changes"><div id="code" tabindex="0" aria-label="File contents"></div>
 </section></main>
 <script nonce="${nonce}" src="${js}"></script></body></html>`;

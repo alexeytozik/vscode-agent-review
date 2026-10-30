@@ -14,7 +14,7 @@ function fixture(run = async () => {}) {
   const web = { cspSource: 'local:', asWebviewUri: uri => 'local:/' + uri, onDidReceiveMessage(fn) { message = fn; }, postMessage(value) { messages.push(value); return Promise.resolve(true); } };
   const panel = { visible: true, webview: web, reveal() { this.visible = true; }, onDidDispose(fn) { close = fn; }, dispose() { this.visible = false; close(); } };
   const vscode = { window: { createWebviewPanel(type, title, column, options) { created++; assert.equal(type, 'changeReview.review'); assert.deepEqual(options.localResourceRoots, ['root/media']); return panel; } }, Uri: { joinPath: (...args) => args.join('/') }, ViewColumn: { Active: 1 }, ThemeIcon: class {} };
-  const view = createReviewView(vscode, { extensionUri: 'root' }, () => viewState([e], selected(e), '/workspace'), run);
+  const view = createReviewView(vscode, { extensionUri: 'root' }, includeBlocks => viewState([e], selected(e), '/workspace', includeBlocks), run);
   view.show();
   return { view, panel, web, messages, entry: e, message: value => message(value), count: () => created, current: () => view.inspect().state };
 }
@@ -46,7 +46,7 @@ test('view projects the selected change with context, relative path and request 
 });
 test('finishing a request never silently selects older pending changes', () => {
   const old = entry('/workspace/older.txt', 'old\n', 'new\n', 'older');
-  assert.deepEqual(viewState([old], undefined, '/workspace'), { complete: true, pending: 1, blocks: [] });
+  assert.deepEqual(viewState([old], undefined, '/workspace'), { complete: true, pending: 1, contentId: 'empty', blocks: [] });
 });
 test('display paths prefer verified canonical paths and never expose traversal prefixes', () => {
   const e = entry('/var/workspace/file.txt');
@@ -92,7 +92,7 @@ test('webview uses a restricted CSP, local assets and sends file contents only i
   assert.ok(!f.web.html.includes(f.entry.file.expected)); assert.ok(!f.web.html.includes('command:'));
   assert.match(f.web.html, /data-action="reject"/); assert.match(f.web.html, /data-action="accept"/);
   assert.deepEqual([...f.web.html.matchAll(/data-action="([^"]+)"/g)].map(match => match[1]), ['previous', 'next', 'reject', 'accept']);
-  assert.ok(!f.web.html.includes('id="kind"')); assert.ok(!f.web.html.includes('id="files"'));
+  assert.match(f.web.html, /id="kind" hidden/); assert.ok(!f.web.html.includes('id="files"'));
   f.view.show(); assert.equal(f.count(), 1, 'Reuse one review tab');
   f.view.dispose(); assert.equal(f.view.inspect().visible, false);
 });
@@ -125,6 +125,16 @@ test('a failed decision retains its error and blocks decisions until the host re
   await assert.rejects(f.view.receive({ action: 'accept', id: f.current().id }), /overlaps/);
   f.view.update(); assert.equal(f.current().error, undefined);
 });
+test('R08 host permits navigation from an error but keeps decision and selection guards', async () => {
+  const calls = [], f = fixture((action, arg) => { calls.push({ action, arg }); });
+  f.entry.file.error = 'conflict'; f.view.update();
+  await assert.rejects(f.view.receive({ action: 'accept', id: f.current().id }), /conflict/);
+  await assert.rejects(f.view.receive({ action: 'reject', id: f.current().id }), /conflict/);
+  await assert.rejects(f.view.receive({ action: 'select', id: f.current().id, hunk: f.entry.hunks[0].id }), /conflict/);
+  await f.view.receive({ action: 'next', id: f.current().id });
+  await f.view.receive({ action: 'previous', id: f.current().id });
+  assert.deepEqual(calls.map(c => c.action), ['next', 'previous']);
+});
 test('removed toolbar actions cannot be invoked by webview messages', async () => {
   const calls = [], f = fixture(action => calls.push(action));
   for (const action of ['open', 'refresh', 'queue']) await assert.rejects(f.view.receive({ action, id: f.current().id }), /Unknown/);
@@ -133,4 +143,40 @@ test('removed toolbar actions cannot be invoked by webview messages', async () =
 test('disposed panels reject late actions without changing files', async () => {
   let calls = 0; const f = fixture(() => { calls++; }), id = f.current().id;
   f.view.dispose(); assert.equal(await f.view.receive({ action: 'accept', id }), false); assert.equal(calls, 0);
+});
+test('navigation sends one bounded content payload per request/path/revision', async () => {
+  const f = fixture(); await f.view.receive({ action: 'ready' }); f.messages.length = 0;
+  const original = f.current().blocks;
+  for (let i = 0; i < 100; i++) await f.view.receive({ action: 'next', id: f.current().id });
+  assert.equal(f.messages.length, 200);
+  assert.ok(f.messages.every(m => !Object.hasOwn(m, 'blocks')));
+  assert.equal(f.current().blocks, original);
+  assert.ok(Buffer.byteLength(JSON.stringify(f.messages)) < 150000);
+  const previous = f.current().contentId;
+  f.entry.turn.key = 'another request'; f.view.update(); await Promise.resolve();
+  assert.notEqual(f.current().contentId, previous); assert.ok(f.messages.at(-1).blocks);
+  const otherRequest = f.current().contentId;
+  Object.assign(f.entry, changes(f.entry.file.baseline, 'another revision\n'));
+  f.entry.file.expected = 'another revision\n'; f.view.update(); await Promise.resolve();
+  assert.notEqual(f.current().contentId, otherRequest);
+  assert.equal(f.messages.at(-1).blocks.filter(b => b.kind !== 'removed').map(b => b.text).join(''), f.entry.file.expected);
+});
+test('handshake, resync and a new panel resend the complete current revision', async () => {
+  const f = fixture(); await f.view.receive({ action: 'ready' });
+  for (const action of ['ready', 'resync']) {
+    f.view.update(); await Promise.resolve(); assert.equal(f.messages.at(-1).blocks, undefined);
+    await f.view.receive({ action }); assert.ok(f.messages.at(-1).blocks);
+  }
+  f.view.dispose(); f.view.show(); await Promise.resolve(); assert.ok(f.messages.at(-1).blocks);
+});
+for (const outcome of ['false', 'reject']) test('failed content delivery retries once and a later handshake can recover: ' + outcome, async () => {
+  const f = fixture(); await f.view.receive({ action: 'ready' });
+  f.messages.length = 0;
+  f.web.postMessage = value => { f.messages.push(value); return outcome === 'false' ? Promise.resolve(false) : Promise.reject(new Error('gone')); };
+  await f.view.receive({ action: 'resync' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.messages.length, 2); assert.ok(f.messages.every(m => m.blocks));
+  f.web.postMessage = value => { f.messages.push(value); return Promise.resolve(true); };
+  await f.view.receive({ action: 'ready' }); assert.ok(f.messages.at(-1).blocks);
+  f.view.update(); await Promise.resolve(); assert.equal(f.messages.at(-1).blocks, undefined);
 });

@@ -16,13 +16,25 @@
   ],
   "main": "./review.js",
   "scripts": {
-    "test": "node --test test/*.test.js",
+    "test": "node test/run-unit.js",
+    "test:migration": "node test/run-unit.js --migration",
+    "test:all-unit": "node test/run-unit.js --all",
     "package": "vsce package",
     "test:editor": "node test/run-editor.js",
+    "test:renderer": "node test/run-browser.js",
+    "test:performance": "node test/run-browser.js --performance",
     "test:live": "node test/run-editor.js --live"
   },
   "contributes": {
     "commands": [
+      {
+        "command": "changeReview.diagnostics",
+        "title": "Agent Review: Show Local Diagnostics"
+      },
+      {
+        "command": "changeReview.cleanup",
+        "title": "Agent Review: Clean Up Local Data"
+      },
       {
         "command": "changeReview.show",
         "title": "Agent Review: Open",
@@ -60,12 +72,12 @@
       },
       {
         "command": "changeReview.enable",
-        "title": "Review Disabled \u2014 Enable",
+        "title": "Review Disabled — Enable",
         "icon": "$(circle-slash)"
       },
       {
         "command": "changeReview.disable",
-        "title": "Review Enabled \u2014 Disable",
+        "title": "Review Enabled — Disable",
         "icon": "$(check)"
       },
       {
@@ -133,6 +145,19 @@
     "configuration": {
       "title": "Agent Review",
       "properties": {
+        "changeReview.exclude": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "maxItems": 128,
+          "uniqueItems": true,
+          "default": [],
+          "scope": "window",
+          "description": "Additional root-relative glob exclusions, including dotfiles. Use / separators, without absolute paths, .. or negation. Default credential exclusions always apply. Gitignored paths are otherwise eligible."
+        },
         "changeReview.autoOpen": {
           "type": "boolean",
           "default": true,
@@ -180,7 +205,8 @@
     }
   },
   "dependencies": {
-    "diff": "9.0.0"
+    "diff": "9.0.0",
+    "picomatch": "4.0.7"
   },
   "author": {
     "name": "alexeytozik",
@@ -204,7 +230,8 @@
   },
   "devDependencies": {
     "@vscode/test-electron": "^3.1.0",
-    "@vscode/vsce": "^4.0.0"
+    "@vscode/vsce": "^4.0.0",
+    "playwright-core": "1.64.1"
   },
   "extensionKind": [
     "ui"

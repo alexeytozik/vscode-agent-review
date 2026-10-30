@@ -18,8 +18,16 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm test
+      - run: npm run test:migration
       - run: npm run package -- --out agent-review.vsix
+      - run: python3 test/verify-package.py agent-review.vsix
       - run: xvfb-run -a npm run test:editor
+        env:
+          REVIEW_VSIX: ${{ github.workspace }}/agent-review.vsix
+      - run: xvfb-run -a npm run test:renderer
+        env:
+          REVIEW_VSIX: ${{ github.workspace }}/agent-review.vsix
+      - run: xvfb-run -a npm run test:performance
         env:
           REVIEW_VSIX: ${{ github.workspace }}/agent-review.vsix
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -42,11 +50,15 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm test
+      - run: npm run package -- --out agent-review.vsix
+      - run: python3 test/verify-package.py agent-review.vsix
       - if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:editor
         env:
           REVIEW_EDITOR_VERSION: ${{ matrix.version }}
+          REVIEW_VSIX: ${{ github.workspace }}/agent-review.vsix
       - if: runner.os == 'macOS'
         run: npm run test:editor
         env:
           REVIEW_EDITOR_VERSION: ${{ matrix.version }}
+          REVIEW_VSIX: ${{ github.workspace }}/agent-review.vsix
