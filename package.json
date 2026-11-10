@@ -1,8 +1,8 @@
 {
   "name": "agent-review",
   "displayName": "Agent Review",
-  "description": "Review individual changes from each request directly in the editor.",
-  "version": "0.7.3",
+  "description": "Review individual changes from each request in a full-file review tab.",
+  "version": "0.7.4",
   "publisher": "alexeytozik",
   "license": "MIT",
   "engines": {
@@ -222,7 +222,7 @@
     "review",
     "diff",
     "changes",
-    "inline"
+    "code-review"
   ],
   "homepage": "https://github.com/alexeytozik/vscode-agent-review",
   "bugs": {
@@ -230,8 +230,13 @@
   },
   "devDependencies": {
     "@vscode/test-electron": "^3.1.0",
-    "@vscode/vsce": "^4.0.0",
+    "@vscode/vsce": "4.1.0",
     "playwright-core": "1.64.1"
+  },
+  "overrides": {
+    "@vscode/vsce": {
+      "minimatch": "11.0.1"
+    }
   },
   "extensionKind": [
     "ui"

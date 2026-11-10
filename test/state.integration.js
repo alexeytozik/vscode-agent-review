@@ -26,22 +26,19 @@ module.exports = { run: async () => {
     }
     const backups = async () => Promise.all((await fs.readdir(storage)).filter(n => n.startsWith('request-review.corrupt-')).map(n => fs.readFile(path.join(storage, n), 'utf8')));
     if (phase === 'state') {
-      await inject('seed'); await fs.writeFile(cache, '{');
+      await inject('seed');
     } else if (phase === 'state-corrupt') {
       assert.equal(api.entries().length, 0, 'Broken JSON does not prevent startup');
       await api.setEnabled(false); assert.equal(api.isEnabled(), false);
       await api.setEnabled(true); assert.ok((await backups()).includes('{'));
       await inject('valid'); assert.equal(api.entries().length, 1, 'Delivery still works after broken JSON');
-      const mixed = api.getState(); mixed.turns.push({ id: 'broken', files: [] });
-      mixed.turns[0].files.push({ ...mixed.turns[0].files[0], path: path.join(root, '..', 'outside.txt') });
-      await fs.writeFile(cache, JSON.stringify(mixed));
     } else if (phase === 'state-partial') {
       assert.equal(api.entries().length, 1); assert.equal(api.entries()[0].file.path, full);
       assert.ok((await backups()).some(s => s.includes('"id":"broken"')));
       const entry = api.entries()[0];
       await api.decide({ turn: entry.turn.key, path: full, revision: entry.revision, hunk: entry.hunks[0].id }, 'reject');
       assert.equal(await fs.readFile(full, 'utf8'), 'before\n');
-      await inject('readonly'); await fs.chmod(storage, 0o500);
+      await inject('readonly');
     } else if (phase === 'state-readonly') {
       assert.equal(api.entries().length, 1, 'Read-only persistence does not reject ready or discard the recovered queue');
       await api.setEnabled(false); assert.equal(api.isEnabled(), false);
@@ -61,7 +58,8 @@ module.exports = { run: async () => {
       await api.decide({ turn: entry.turn.key, path: full, revision: entry.revision, hunk: entry.hunks[0].id }, 'reject');
       assert.equal(await fs.readFile(full, 'utf8'), 'before\n');
     }
-    await fs.writeFile(process.env.REVIEW_RESULT_FILE, JSON.stringify({ passed: true }));
+    // The runner prepares the next restart fixture only after this editor exits.
+    await fs.writeFile(process.env.REVIEW_RESULT_FILE, JSON.stringify({ passed: true, ...(['state', 'state-corrupt', 'state-partial'].includes(phase) ? { stateFixture: storage } : {}) }));
   } catch (error) {
     fs.open = open;
     if (storage) await fs.chmod(storage, 0o700).catch(() => {});
