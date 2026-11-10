@@ -16,6 +16,8 @@ async function main(){
     const work=path.join(root,group),workspace=path.join(work,'workspace'),user=path.join(work,'user'),extensions=path.join(work,'extensions'),home=path.join(work,'home');
     let cleanupFixture;
     await fs.mkdir(workspace,{recursive:true});await fs.mkdir(extensions);await fs.mkdir(home,{mode:0o700});await fs.mkdir(path.join(user,'User'),{recursive:true});
+    // Create the refresh fixture before workspace watchers can queue its initial creation events.
+    if(group==='refresh')await Promise.all(Array.from({length:100},(_,i)=>fs.writeFile(path.join(workspace,'pending-'+i+'.txt'),'new\nanchor\n')));
     await fs.writeFile(path.join(user,'User/settings.json'),JSON.stringify({'workbench.startupEditor':'none','extensions.autoUpdate':false,'extensions.autoCheckUpdates':false,'telemetry.telemetryLevel':'off','files.autoSave':'off','editor.codeLens':true,'editor.hover.enabled':process.env.REVIEW_EDITOR_VERSION==='1.96.0'?false:'off','editor.hover.delay':10000,'changeReview.autoOpen':true,...(group==='live'?{'changeReview.view':liveView}:['fixture','mode','edges','stress','native'].includes(group)?{'changeReview.view':'editor'}:{}),...(group==='mode'?{'changeReview.enabled':false}:{})}));
     try{
     if(live){const auth=path.join(process.env.CODEX_HOME||path.join(os.homedir(),'.codex'),'auth.json');try{await fs.copyFile(auth,path.join(home,'auth.json'));await fs.chmod(path.join(home,'auth.json'),0o600);}catch(error){if(error.code!=='ENOENT')throw error;}}

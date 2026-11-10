@@ -14,7 +14,7 @@ module.exports = { run: async () => {
     await vscode.workspace.getConfiguration('changeReview').update('autoOpen', false, vscode.ConfigurationTarget.Workspace);
     const files = Array.from({ length: 100 }, (_, i) => path.join(root, 'pending-' + i + '.txt'));
     const before = 'old\nanchor\n', after = 'new\nanchor\n';
-    await Promise.all(files.map(full => fs.writeFile(full, after)));
+    await Promise.all(files.map(async full => assert.equal(await read(full, 'utf8'), after, 'Refresh fixtures must exist before the editor starts')));
     await api.receive({ method: 'item/completed', type: 'fileChange', status: 'completed', threadId: 'refresh', turnId: 'request', itemId: 'edit', changes:
       files.map(full => ({ path: full, kind: { type: 'update' }, diff: createPatch(full, before, after), snapshot: { disk: after, text: after, mode: 0o644, canonical: full } })) });
     await api.receive({ method: 'turn/completed', threadId: 'refresh', turnId: 'request' });
