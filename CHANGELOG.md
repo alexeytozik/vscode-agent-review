@@ -1,6 +1,6 @@
 # 0.7.4 - Preview
 
-Isolate damaged records and complex diffs so other files remain available for review. Preserve pending reviews and decisions through failures, restarts and upgrades. Reduce repeated diff calculations and file-content transfers during navigation. Improve keyboard navigation, accessibility, credential exclusions and local diagnostics. Verify installed packages and live review feedback with the shared hook dispatcher
+Isolate damaged records and complex diffs so other files remain available for review. Preserve pending reviews and decisions through failures, restarts and upgrades. Reduce repeated diff calculations and file-content transfers during navigation, with a linear path for unambiguous line replacements that retains the complexity limits. Improve keyboard navigation, accessibility, credential exclusions and local diagnostics. Verify installed packages and live review feedback with the shared hook dispatcher
 
 # 0.7.3 — Preview
 
