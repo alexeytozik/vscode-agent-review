@@ -6,7 +6,8 @@ const vscode = require('vscode');
 const { createPatch } = require('diff');
 module.exports = { run: async () => {
   const read = fs.readFile, realpath = fs.realpath, lstat = fs.lstat;
-  const samples = [];
+  const samples = [], watchTrace = { events: [] };
+  let observer, reads = [], stats = 0, resolutions = 0;
   try {
     const root = await fs.realpath(vscode.workspace.workspaceFolders[0].uri.fsPath);
     const api = await vscode.extensions.getExtension(require('./extension-id').current).activate(); await api.ready;
@@ -17,13 +18,15 @@ module.exports = { run: async () => {
     await api.receive({ method: 'item/completed', type: 'fileChange', status: 'completed', threadId: 'refresh', turnId: 'request', itemId: 'edit', changes:
       files.map(full => ({ path: full, kind: { type: 'update' }, diff: createPatch(full, before, after), snapshot: { disk: after, text: after, mode: 0o644, canonical: full } })) });
     await api.receive({ method: 'turn/completed', threadId: 'refresh', turnId: 'request' });
-    let reads = [], stats = 0, resolutions = 0;
     fs.readFile = async (...args) => { if (files.includes(args[0])) reads.push(args[0]); return read(...args); };
     fs.lstat = async (...args) => { if (files.includes(args[0])) stats++; return lstat(...args); };
     fs.realpath = async (...args) => { if (files.includes(args[0])) resolutions++; return realpath(...args); };
     let start = Date.now(); await api.refresh();
     samples.push({ probe: 'explicit-full', files: 100, reads: reads.length, stats, realpaths: resolutions, elapsed_ms: Date.now() - start });
     assert.equal(reads.length, 100);
+    watchTrace.workspace = vscode.workspace.workspaceFolders[0].uri.fsPath; watchTrace.canonical = root; watchTrace.subscribedAt = Date.now();
+    observer = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(root, 'pending-0.txt'));
+    for (const [kind, subscribe] of [['change', 'onDidChange'], ['create', 'onDidCreate'], ['delete', 'onDidDelete']]) observer[subscribe](uri => { if (watchTrace.events.length < 64) watchTrace.events.push({ kind, path: uri.fsPath, at: Date.now() }); });
     reads = []; stats = resolutions = 0; start = Date.now();
     for (let i = 0; i < 6; i++) await fs.writeFile(files[0], after + 'manual ' + i + '\n');
     for (let i = 0; i < 200 && api.entries().find(e => e.file.path === files[0]).file.expected !== after + 'manual 5\n'; i++) await new Promise(resolve => setTimeout(resolve, 25));
@@ -61,7 +64,11 @@ module.exports = { run: async () => {
     await fs.rename(moved, files[3]);
     for (let i = 0; i < 200 && api.entries().find(e => e.file.path === files[3]).file.error; i++) await new Promise(resolve => setTimeout(resolve, 25));
     assert.equal(api.entries().find(e => e.file.path === files[3]).file.error, undefined);
-    await fs.writeFile(process.env.REVIEW_RESULT_FILE, JSON.stringify({ passed: true, samples }));
-  } catch (error) { await fs.writeFile(process.env.REVIEW_RESULT_FILE, JSON.stringify({ passed: false, error: error.stack, samples })); throw error; }
-  finally { fs.readFile = read; fs.realpath = realpath; fs.lstat = lstat; }
+    await fs.writeFile(process.env.REVIEW_RESULT_FILE, JSON.stringify({ passed: true, samples, watchTrace }));
+  } catch (error) {
+    const probe = { watchTrace, reads: reads.length, uniqueReadPaths: [...new Set(reads)], stats, resolutions };
+    console.error(JSON.stringify({ refreshFailure: probe }));
+    await fs.writeFile(process.env.REVIEW_RESULT_FILE, JSON.stringify({ passed: false, error: error.stack, samples, ...probe })); throw error;
+  }
+  finally { observer?.dispose(); fs.readFile = read; fs.realpath = realpath; fs.lstat = lstat; }
 } };

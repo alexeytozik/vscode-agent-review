@@ -176,5 +176,6 @@
   "review-model.js",
   "review-state.js",
   "review-view.js",
-  "review.js"
+  "review.js",
+  "watch-paths.js"
 ]

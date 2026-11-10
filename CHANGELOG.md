@@ -1,6 +1,6 @@
 # 0.7.4 - Preview
 
-Isolate damaged records and complex diffs so other files remain available for review. Preserve pending reviews and decisions through failures, restarts and upgrades. Reduce repeated diff calculations and file-content transfers during navigation, with a linear path for unambiguous line replacements that retains the complexity limits. Improve keyboard navigation, accessibility, credential exclusions and local diagnostics. Verify installed packages and live review feedback with the shared hook dispatcher. Use a distinct Marketplace identity while preserving saved reviews from local preview installations
+Isolate damaged records and complex diffs so other files remain available for review. Preserve pending reviews and decisions through failures, restarts and upgrades. Reduce repeated diff calculations and file-content transfers during navigation, with a linear path for unambiguous line replacements that retains the complexity limits. Improve keyboard navigation, accessibility, credential exclusions and local diagnostics. Normalize file watcher aliases without rescanning unrelated files. Verify installed packages and live review feedback with the shared hook dispatcher. Use a distinct Marketplace identity while preserving saved reviews from local preview installations
 
 # 0.7.3 — Preview
 

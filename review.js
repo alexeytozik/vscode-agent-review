@@ -15,6 +15,7 @@ const { createStateStore } = require('./review-state');
 const { createReviewIO } = require('./review-io');
 const { createRequestHistory } = require('./review-metrics');
 const { buildDiagnostics } = require('./review-diagnostics');
+const { createWatchIndex } = require('./watch-paths');
 
 function activate(context) {
   const currentId = context.extension?.id || [require('./package.json').publisher, require('./package.json').name].join('.');
@@ -73,6 +74,7 @@ function activate(context) {
   const controls = vscode.window.createTextEditorDecorationType({});
   context.subscriptions.push(inserted, removed, controls, lensesChanged);
   const watchers = new Map(), trackedPaths = new Set(), canonicalPaths = new Map(), dirtyPaths = new Set(), documents = new Map();
+  let watchIndex = createWatchIndex([]);
   const storage = context.storageUri || context.globalStorageUri;
   const cache = path.join(storage.fsPath, 'request-review.json');
   const stateStore = createStateStore(cache);
@@ -161,6 +163,7 @@ function activate(context) {
   function update() {
     modeStatus.update();
     const pending = entries();
+    watchIndex = createWatchIndex(enabled() ? pending.map(entry => entry.file) : []);
     vscode.commands.executeCommand('setContext', 'changeReview.enabled', enabled());
     vscode.commands.executeCommand('setContext', 'changeReview.nativeControls', nativeLoaded);
     vscode.commands.executeCommand('setContext', 'changeReview.hasPending', enabled() && pending.length > 0);
@@ -178,7 +181,8 @@ function activate(context) {
       const directory = path.dirname(e.file.path); directories.add(directory);
       if (!watchers.has(directory)) {
         const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(directory, '*'));
-        w.onDidChange(uri => schedule(uri.fsPath)); w.onDidCreate(uri => schedule(uri.fsPath)); w.onDidDelete(uri => schedule(uri.fsPath)); watchers.set(directory, w);
+        const changed = uri => { for (const full of watchIndex.get(directory, uri.fsPath) || []) schedule(full); };
+        w.onDidChange(changed); w.onDidCreate(changed); w.onDidDelete(changed); watchers.set(directory, w);
       }
     }
     for (const [directory, w] of watchers) if (!directories.has(directory)) { w.dispose(); watchers.delete(directory); }
@@ -206,7 +210,7 @@ function activate(context) {
     update();
   }
   function schedule(full) {
-    if (!enabled()) return;
+    if (!enabled() || (!trackedPaths.has(full) && !canonicalPaths.has(full))) return;
     if (trackedPaths.has(full)) dirtyPaths.add(full);
     for (const candidate of canonicalPaths.get(full) || []) dirtyPaths.add(candidate);
     if (!dirtyPaths.size) return;
