@@ -3,9 +3,20 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const { performance } = require('node:perf_hooks');
 const { diffArrays } = require('diff');
 const { changes, decide, lines } = require('../core');
 const source = fs.readFileSync(require.resolve('../core'), 'utf8');
+const nativeNow = performance.now, nativeDateNow = Date.now, realNow = nativeNow.bind(performance);
+
+function logicalClock(t) {
+  // Structural comparisons advance both finite clocks per read. Host scheduling
+  // is measured by the separate deadline checks and installed performance tests.
+  let now = 0;
+  const advance = () => now += 0.1;
+  t.mock.method(performance, 'now', advance);
+  t.mock.method(Date, 'now', () => Math.floor(advance()));
+}
 
 function instrument({ clock, fallback = diffArrays } = {}) {
   const calls = [], module = { exports: {} };
@@ -29,7 +40,8 @@ function myersEdits(before, after) {
   return result;
 }
 
-test('1000 independent sparse replacements avoid Myers and preserve exact Keep/Undo', () => {
+test('1000 independent sparse replacements avoid Myers and preserve exact Keep/Undo', t => {
+  logicalClock(t);
   const f = sparse(), core = instrument({ fallback: () => assert.fail('Sparse replacements must not enter Myers') });
   let before = f.before, after = f.after;
   const initial = core.changes(before, after);
@@ -43,7 +55,8 @@ test('1000 independent sparse replacements avoid Myers and preserve exact Keep/U
   assert.equal(undone.baseline, before); assert.equal(core.changes(before, after).hunks.length, 998);
 });
 
-test('sparse output matches Myers for contiguous runs, repeated anchors and exact text variants', () => {
+test('sparse output matches Myers for contiguous runs, repeated anchors and exact text variants', t => {
+  logicalClock(t);
   let seed = 97;
   const random = max => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed % max; };
   for (let run = 0; run < 35; run++) {
@@ -71,7 +84,8 @@ test('sparse output matches Myers for contiguous runs, repeated anchors and exac
   }
 });
 
-test('changed lines that occur among unchanged neighbours still use Myers', () => {
+test('changed lines that occur among unchanged neighbours still use Myers', t => {
+  logicalClock(t);
   const f = sparse(100);
   for (const anchor of ['old-0\n', 'new-0\n']) {
     const core = instrument(), before = f.before + anchor, after = f.after + anchor;
@@ -81,7 +95,8 @@ test('changed lines that occur among unchanged neighbours still use Myers', () =
   }
 });
 
-test('moved and repeated changed lines and unequal line counts retain the bounded Myers fallback', () => {
+test('moved and repeated changed lines and unequal line counts retain the bounded Myers fallback', t => {
+  logicalClock(t);
   const f = sparse(100);
   const fixtures = [
     [f.before, f.after.replace('new-0\n', 'old-1\n')],
@@ -97,20 +112,23 @@ test('moved and repeated changed lines and unequal line counts retain the bounde
   }
 });
 
-test('small and newline-heavy one-edit inputs avoid the sparse set-building path', () => {
+test('small and newline-heavy one-edit inputs avoid the sparse set-building path', t => {
+  logicalClock(t);
   const core = instrument(), before = '\n'.repeat(10000) + 'old\n', after = '\n'.repeat(10000) + 'new\n';
   assert.equal(core.changes(before, after).hunks.length, 1); assert.equal(core.calls.length, 1);
   assert.equal(core.changes('old\n', 'new\n').hunks.length, 1); assert.equal(core.calls.length, 2);
 });
 
-test('linear substitutions retain the exact 10000-edit hard boundary', () => {
+test('linear substitutions retain the exact 10000-edit hard boundary', t => {
+  logicalClock(t);
   const core = instrument({ fallback: () => assert.fail('Unambiguous replacement does not need Myers') });
   assert.equal(core.changes('old\n'.repeat(5000), 'new\n'.repeat(5000)).hunks.length, 1);
   for (const count of [5001, 6000]) assert.throws(() => core.changes('old\n'.repeat(count), 'new\n'.repeat(count)), /diff is too large/);
   assert.equal(core.calls.length, 0);
 });
 
-test('6000 displaced lines still reach Myers when their minimal edit length is only two', () => {
+test('6000 displaced lines still reach Myers when their minimal edit length is only two', t => {
+  logicalClock(t);
   const old = Array.from({ length: 6000 }, (_, index) => `row-${index}\n`), core = instrument();
   const result = core.changes(old.join(''), [...old.slice(1), old[0]].join(''));
   assert.equal(core.calls.length, 1); assert.equal(result.hunks.length, 2);
@@ -118,7 +136,8 @@ test('6000 displaced lines still reach Myers when their minimal edit length is o
   assert.equal(result.hunks[1].before, ''); assert.equal(result.hunks[1].after, old[0]);
 });
 
-test('fast-path detection and Myers share one deadline instead of restarting 200ms', () => {
+test('fast-path detection and Myers share one deadline instead of restarting 200ms', t => {
+  logicalClock(t);
   const f = sparse(100); let now = 0;
   const core = instrument({ clock: () => { const value = now; now += 10; return value; } });
   core.changes(f.before, f.after.replace('new-0\n', 'old-1\n'));
@@ -129,4 +148,16 @@ test('exhausted sparse detection budget never starts an additional Myers attempt
   const f = sparse(100); let first = true;
   const core = instrument({ clock: () => first ? (first = false, 0) : 201 });
   assert.throws(() => core.changes(f.before, f.after), /diff is too large/); assert.equal(core.calls.length, 0);
+});
+
+test('a real 250ms pause exhausts the production deadline before Myers starts', t => {
+  assert.equal(performance.now, nativeNow); assert.equal(Date.now, nativeDateNow);
+  let reads = 0;
+  t.mock.method(performance, 'now', () => {
+    if (++reads === 2) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+    return realNow();
+  });
+  const core = instrument({ fallback: () => assert.fail('An expired deadline must not enter Myers') }), start = realNow();
+  assert.throws(() => core.changes('before\n', 'after\n'), /diff is too large/);
+  assert.equal(core.calls.length, 0); assert.ok(realNow() - start >= 200);
 });
