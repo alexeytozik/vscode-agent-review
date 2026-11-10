@@ -17,7 +17,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npm test
+      - run: npm test -- --test-concurrency=1
       - run: npm run test:migration
       - run: npm run package -- --out agent-review.vsix
       - run: python3 test/verify-package.py agent-review.vsix
@@ -55,7 +55,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npm test
+      - run: npm test -- --test-concurrency=1
       - run: npm run package -- --out agent-review.vsix
       - run: python3 test/verify-package.py agent-review.vsix
       - if: runner.os == 'Linux'

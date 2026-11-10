@@ -122,6 +122,7 @@ function createRegistry(home) {
     });
   }
   async function unregister(record, instance) {
+    let registrationRemoved = false;
     return lock(async () => withDirectoryLock(path.join(directory, 'lease-lock-' + keyFor(record.root)), async () => {
       await available(record.root, instance);
       const owned = await registration(record.root);
@@ -130,9 +131,15 @@ function createRegistry(home) {
       const current = await setup(); if (!current) throw new Error('The shared hooks ownership record is missing.');
       if (names.length === 1) await editHookConfig(configFile, record.store, input => configure(input, current.command, [current.pendingCommand], true));
       await fs.unlink(file('registrations', record.root));
+      registrationRemoved = true;
       const lease = await optional(file('leases', record.root));
       if (lease?.instance === instance && lease.token === record.token) await fs.unlink(file('leases', record.root));
-    }));
+    })).catch(error => {
+      if (!registrationRemoved) throw error;
+      const failure = new Error(error.message, { cause: error });
+      if (error.code !== undefined) failure.code = error.code;
+      failure.registrationRemoved = true; throw failure;
+    });
   }
   async function health() {
     return lock(async () => {

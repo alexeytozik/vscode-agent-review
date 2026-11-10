@@ -48,7 +48,7 @@ function createConnection({ storage, extensionPath, executable, root, receive, e
   const store = path.join(storage, 'lifecycle'), configFile = path.join(home, 'hooks.json'), instance = randomUUID();
   const registry = createRegistry(home);
   let shared;
-  let active = false, configured = false, timer, watcher, disposed = false, disposal, chain = Promise.resolve(), writes = Promise.resolve(), setupChanges = Promise.resolve(), lastEvent;
+  let active = false, configured = false, timer, watcher, disposed = false, disconnecting = false, disposal, chain = Promise.resolve(), writes = Promise.resolve(), setupChanges = Promise.resolve(), lastEvent;
   const editSetup = work => { const job = setupChanges.then(work); setupChanges = job.catch(() => {}); return job; };
   const metadata = path.join(store, 'setup.json');
   const health = path.join(store, 'event-health.json');
@@ -115,14 +115,14 @@ function createConnection({ storage, extensionPath, executable, root, receive, e
     });
   }
   async function update() {
-    if (disposed) return;
+    if (disposed || disconnecting) return;
     if (!active) {
       try { await scrubCurrentPolicy(); captureBlocked = false; }
       catch (error) { captureBlocked = true; changed(); throw error; }
       return;
     }
     writes = writes.catch(() => {}).then(() => withCaptureLock(store, async () => {
-      if (!active || disposed) return;
+      if (!active || disposed || disconnecting) return;
       const previous = configured;
       const wasBlocked = captureBlocked;
       if (shared) {
@@ -133,7 +133,7 @@ function createConnection({ storage, extensionPath, executable, root, receive, e
         try { configured = isConfigured(await readRecord(configFile, 5 * 1024 * 1024), command); } catch { configured = false; }
       }
       if (!configured) lastEvent = undefined;
-      if (!active || disposed) return;
+      if (!active || disposed || disconnecting) return;
       let patterns = exclude(), policy;
       try { policy = createPathPolicy(patterns); captureBlocked = false; } catch { patterns = []; captureBlocked = true; }
       const connection = { root, enabled: enabled() && configured && !captureBlocked, pid: process.pid, instance, updated: Date.now(), extensionPath, exclude: patterns };
@@ -268,10 +268,26 @@ function createConnection({ storage, extensionPath, executable, root, receive, e
   async function disconnect() {
     await available();
     let setup; try { setup = JSON.parse(await fs.readFile(metadata, 'utf8')); } catch (e) { if (e.code === 'ENOENT') return; throw e; }
-    if (setup.version === 2) await registry.unregister(sharedSetup(setup), instance);
-    else { const previous = await legacyCommands(setup); await editHookConfig(configFile, store, input => configure(input, previous[0], [], true)); }
-    await fs.unlink(metadata); active = false; configured = false; lastEvent = undefined; clearInterval(timer); watcher?.close(); await writes.catch(() => {});
-    await withCaptureLock(store, async () => { await fs.unlink(path.join(store, 'owner.lock')).catch(() => {}); await fs.unlink(path.join(store, 'connection.json')).catch(() => {}); }); changed();
+    const registration = setup.version === 2 ? sharedSetup(setup) : undefined;
+    const stop = () => { active = false; configured = false; lastEvent = undefined; clearInterval(timer); watcher?.close(); };
+    const clearOwner = async () => { await withCaptureLock(store, async () => { await fs.unlink(path.join(store, 'owner.lock')).catch(() => {}); await fs.unlink(path.join(store, 'connection.json')).catch(() => {}); }); changed(); };
+    let committed = false, failed = false;
+    disconnecting = true;
+    try {
+      await writes.catch(() => {});
+      try {
+        if (registration) await registry.unregister(registration, instance);
+        else { const previous = await legacyCommands(setup); await editHookConfig(configFile, store, input => configure(input, previous[0], [], true)); }
+      } catch (error) {
+        if (error.registrationRemoved === true) { committed = true; stop(); await registry.release(registration, instance).catch(() => {}); }
+        throw error;
+      }
+      committed = true; stop(); await fs.unlink(metadata);
+    } catch (error) { failed = true; throw error; }
+    finally {
+      try { if (committed) { if (failed) await clearOwner().catch(() => {}); else await clearOwner(); } }
+      finally { disconnecting = false; }
+    }
   }
   async function decision(arg, action) {
     if (disposed || !active) return false;

@@ -228,3 +228,66 @@ test('R20 a feedback decision waiting for capture lock is not acknowledged after
     await assert.rejects(fs.stat(path.join(current.connection.store, 'feedback')), { code: 'ENOENT' });
   } finally { release(); await holder; }
 });
+test('R20 an update crossing explicit disconnect does not mistake removed registration for foreign ownership', async t => {
+  const f = await fixture(t), current = await f.connect('workspace'), registration = path.join(f.registry.directory, 'registrations', keyFor(current.workspace) + '.json'), unlink = fs.unlink;
+  let entered, release, hit = false; const reached = new Promise(resolve => { entered = resolve; }), resume = new Promise(resolve => { release = resolve; });
+  t.mock.method(fs, 'unlink', async (...args) => { const result = await unlink(...args); if (args[0] === registration && !hit) { hit = true; entered(); await resume; } return result; });
+  const disconnecting = current.connection.disconnect(); await reached;
+  try {
+    assert.equal(await f.registry.registration(current.workspace), undefined); assert.equal(current.connection.status().connected, true);
+    await current.connection.update(); assert.deepEqual(f.errors, []);
+  } finally { release(); await disconnecting; }
+  assert.equal(current.connection.status().connected, false); assert.equal(await select(f.registry.directory, current.workspace), undefined);
+});
+test('R20 disconnect drains queued updates without publishing another connection or lease', async t => {
+  const f = await fixture(t), current = await f.connect('workspace'), store = current.connection.store;
+  let entered, release, waiting, metadataRead; const reached = new Promise(resolve => { entered = resolve; }), resume = new Promise(resolve => { release = resolve; }), queued = new Promise(resolve => { waiting = resolve; }), read = new Promise(resolve => { metadataRead = resolve; });
+  const holder = require('../file-lock').withCaptureLock(store, async () => { entered(); await resume; }); await reached;
+  const writeFile = fs.writeFile, readFile = fs.readFile, rename = fs.rename; let connectionWrites = 0;
+  t.mock.method(fs, 'writeFile', async (...args) => { const result = await writeFile(...args); if (path.dirname(String(args[0])) === path.join(store, 'capture-lock')) waiting(); return result; });
+  t.mock.method(fs, 'readFile', async (...args) => { const result = await readFile(...args); if (args[0] === path.join(store, 'setup.json')) metadataRead(); return result; });
+  t.mock.method(fs, 'rename', async (...args) => { if (args[1] === path.join(store, 'connection.json')) connectionWrites++; return rename(...args); });
+  const first = current.connection.update(), second = current.connection.update(); await queued;
+  const disconnecting = current.connection.disconnect(); await read;
+  try {
+    // Let the disconnect continuation pause updates before releasing the held lock.
+    await new Promise(resolve => setImmediate(resolve));
+  } finally { release(); await Promise.all([holder, first, second, disconnecting]); }
+  assert.equal(connectionWrites, 0); assert.deepEqual(f.errors, []);
+  assert.equal(await f.registry.registration(current.workspace), undefined);
+  await assert.rejects(fs.lstat(path.join(f.registry.directory, 'leases', keyFor(current.workspace) + '.json')), { code: 'ENOENT' });
+});
+test('R20 a failed unregister resumes updates and permits disconnect and reconnect retry', async t => {
+  const f = await fixture(t), current = await f.connect('workspace'), readdir = fs.readdir, config = await f.config(); let hit = false;
+  t.mock.method(fs, 'readdir', async (...args) => { if (args[0] === path.join(f.registry.directory, 'registrations') && !hit) { hit = true; throw Object.assign(new Error('temporary registration read'), { code: 'EIO' }); } return readdir(...args); });
+  await assert.rejects(current.connection.disconnect(), { code: 'EIO' }); assert.ok(hit);
+  assert.deepEqual(await f.config(), config); assert.ok(await f.registry.registration(current.workspace)); assert.equal(current.connection.status().connected, true);
+  await current.connection.update(); assert.equal((await select(f.registry.directory, current.workspace)).store, current.connection.store);
+  await current.connection.disconnect(); await current.connection.connect();
+  assert.equal(current.connection.status().connected, true); assert.equal((await select(f.registry.directory, current.workspace)).store, current.connection.store);
+  await current.connection.disconnect(); assert.deepEqual(await f.config(), f.foreign); assert.deepEqual(f.errors, []);
+});
+test('R20 a failed local setup removal after unregister leaves review off and reconnectable', async t => {
+  const f = await fixture(t), current = await f.connect('workspace'), metadata = path.join(current.connection.store, 'setup.json'), unlink = fs.unlink;
+  const saved = await fs.readFile(metadata, 'utf8'); let hit = false;
+  t.mock.method(fs, 'unlink', async (...args) => { if (args[0] === metadata && !hit) { hit = true; throw Object.assign(new Error('temporary setup removal'), { code: 'EIO' }); } return unlink(...args); });
+  await assert.rejects(current.connection.disconnect(), { code: 'EIO' }); assert.ok(hit);
+  assert.equal(current.connection.status().connected, false); assert.equal(await f.registry.registration(current.workspace), undefined);
+  assert.equal(await fs.readFile(metadata, 'utf8'), saved);
+  for (const name of ['owner.lock', 'connection.json']) await assert.rejects(fs.lstat(path.join(current.connection.store, name)), { code: 'ENOENT' });
+  await current.connection.update(); assert.deepEqual(f.errors, []);
+  await current.connection.connect(); assert.equal(current.connection.status().connected, true);
+  await current.connection.disconnect(); assert.deepEqual(await f.config(), f.foreign); assert.deepEqual(f.errors, []);
+});
+test('R20 a lease removal failure after registration commit leaves review off and reconnectable', async t => {
+  const f = await fixture(t), current = await f.connect('workspace'), lease = path.join(f.registry.directory, 'leases', keyFor(current.workspace) + '.json'), unlink = fs.unlink;
+  const cause = Object.freeze(Object.assign(new Error('temporary lease removal'), { code: 'EIO' })); let hit = false, failure;
+  t.mock.method(fs, 'unlink', async (...args) => { if (args[0] === lease && !hit) { hit = true; throw cause; } return unlink(...args); });
+  await assert.rejects(current.connection.disconnect(), error => { failure = error; return error.code === 'EIO'; }); assert.ok(hit);
+  assert.equal(current.connection.status().connected, false); assert.equal(await f.registry.registration(current.workspace), undefined);
+  for (const name of ['owner.lock', 'connection.json']) await assert.rejects(fs.lstat(path.join(current.connection.store, name)), { code: 'ENOENT' });
+  await assert.rejects(fs.lstat(lease), { code: 'ENOENT' }); assert.equal(failure.cause, cause); assert.equal(failure.registrationRemoved, true);
+  await current.connection.update(); assert.deepEqual(f.errors, []);
+  await current.connection.connect(); assert.equal(current.connection.status().connected, true);
+  await current.connection.disconnect(); assert.deepEqual(await f.config(), f.foreign); assert.deepEqual(f.errors, []);
+});
