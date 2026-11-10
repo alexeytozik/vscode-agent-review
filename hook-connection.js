@@ -154,17 +154,21 @@ function createConnection({ storage, extensionPath, executable, root, receive, e
     await writes;
   }
   function drain() {
+    if (disposed) return chain.catch(() => {});
     chain = chain.then(async () => {
+      if (disposed) return;
       if (!incomplete && await fs.stat(health).then(() => true, e => { if (e.code === 'ENOENT') return false; throw e; })) { incomplete = true; changed(); }
       const directory = path.join(store, 'events');
       const files = (await fs.readdir(directory).catch(e => { if (e.code === 'ENOENT') return []; throw e; })).filter(f => /^\d+-[\w-]+\.json$/.test(f)).sort();
       for (const name of files) {
+        if (disposed) return;
         const file = path.join(directory, name);
         let payload;
         try {
           payload = await readRecord(file, 25 * 1024 * 1024);
           validatePayload(payload, root);
         } catch (error) {
+          if (disposed) return;
           if (error.code === 'ENOENT') continue;
           if (error instanceof InvalidRecord) {
             incomplete = true; changed();
@@ -179,24 +183,33 @@ function createConnection({ storage, extensionPath, executable, root, receive, e
           reportOnce(name, error); break;
         }
         try {
+          if (disposed) return;
           const records = await withCaptureLock(store, async () => {
+            if (disposed) return;
             // Scrub may have changed this file since the first validation. Read
             // and filter its current bytes under the same policy commit lock.
             payload = await readRecord(file, 25 * 1024 * 1024); validatePayload(payload, root);
+            if (disposed) return;
             const policy = createPathPolicy(exclude()), filtered = payload.records.map(event => filterEvent(event, root, policy));
             if (filtered.some((event, index) => event !== payload.records[index])) await atomic(file, { ...payload, records: filtered });
             return filtered;
           });
-          for (const event of records) await receive(event);
+          if (!records) return;
+          for (const event of records) {
+            if (disposed) return;
+            await receive(event);
+          }
+          // A partially delivered envelope remains on disk for deduplicated retry.
+          if (disposed) return;
           await fs.unlink(file);
           failures.delete(name);
           lastEvent = configured ? Date.now() : undefined; changed();
         } catch (error) {
           // receive may have partially applied a batch; its item IDs remain the dedupe key.
-          reportOnce(name, error); break;
+          if (!disposed) reportOnce(name, error); break;
         }
       }
-    }).catch(error => reportOnce('drain', error));
+    }).catch(error => { if (!disposed) reportOnce('drain', error); });
     return chain;
   }
   async function start() {
@@ -284,6 +297,7 @@ function createConnection({ storage, extensionPath, executable, root, receive, e
     disposed = true; active = false; clearInterval(timer); watcher?.close();
     disposal = (async () => {
       await setupChanges; await writes.catch(() => {});
+      await chain.catch(() => {});
       await maintenanceJob;
       await Promise.allSettled([maintenanceWalker?.return(), ...[...cleanupWalkers.values()].map(walker => walker.return())]);
       for (const name of ['connection.json', 'owner.lock']) {
