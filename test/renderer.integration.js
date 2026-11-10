@@ -9,7 +9,7 @@ module.exports = { run: async () => {
   let server, timer;
   try {
     const root = await fs.realpath(vscode.workspace.workspaceFolders[0].uri.fsPath);
-    const api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate(); await api.ready;
+    const api = await vscode.extensions.getExtension(require('./extension-id').current).activate(); await api.ready;
     const full = path.join(root, 'browser.txt'), before = 'old first\n' + 'unchanged line\n'.repeat(5000) + 'old last\n' + 'x'.repeat(20000) + 'Ω';
     const after = before.replace('old first', 'new first').replace('old last', 'new last');
     let sequence = 0, captureTime;

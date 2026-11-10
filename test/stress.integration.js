@@ -9,7 +9,7 @@ const { createPatch } = require('diff');
 const { actionAt } = require('./review-actions');
 
 async function run(root) {
-  const api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate();
+  const api = await vscode.extensions.getExtension(require('./extension-id').current).activate();
   await api.ready;
   assert.ok([false, 'off'].includes(vscode.workspace.getConfiguration('editor').get('hover.enabled')));
   assert.equal(vscode.workspace.getConfiguration('editor').get('hover.delay'), 10000);

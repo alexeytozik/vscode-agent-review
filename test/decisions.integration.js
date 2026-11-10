@@ -33,7 +33,7 @@ ioFactory.createReviewIO = (...args) => {
 module.exports = { run: async () => {
   const root = await fs.realpath(vscode.workspace.workspaceFolders[0].uri.fsPath);
   try {
-    const api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate(); await api.ready; await api.hooks.ready;
+    const api = await vscode.extensions.getExtension(require('./extension-id').current).activate(); await api.ready; await api.hooks.ready;
     if (!api.hooks.status().connected) await api.hooks.connect();
     let sequence = 0;
     async function inject(name, threadId = 'decisions', before = 'one\nanchor\nthree\n', after = 'ONE\nanchor\nTHREE\n', mode = 0o644) {

@@ -9,7 +9,7 @@ module.exports = { run: async () => {
   const samples = [];
   try {
     const root = await fs.realpath(vscode.workspace.workspaceFolders[0].uri.fsPath);
-    const api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate(); await api.ready;
+    const api = await vscode.extensions.getExtension(require('./extension-id').current).activate(); await api.ready;
     await vscode.workspace.getConfiguration('changeReview').update('autoOpen', false, vscode.ConfigurationTarget.Workspace);
     const files = Array.from({ length: 100 }, (_, i) => path.join(root, 'pending-' + i + '.txt'));
     const before = 'old\nanchor\n', after = 'new\nanchor\n';

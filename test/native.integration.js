@@ -7,7 +7,7 @@ const { createPatch } = require('diff');
 
 async function run(root) {
   assert.ok((await vscode.commands.getCommands()).includes('_changeReview.nativeInspect'), 'Run against the supported local workbench integration');
-  const api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate();
+  const api = await vscode.extensions.getExtension(require('./extension-id').current).activate();
   await api.ready;
   const first = path.join(root, 'first.txt'), second = path.join(root, 'second.txt');
   const before = 'one\nkeep\nthree\n', after = 'ONE\nkeep\nTHREE\n';

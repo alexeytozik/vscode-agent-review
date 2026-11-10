@@ -33,7 +33,7 @@ with zipfile.ZipFile(artifact) as archive:
     runtime_dependencies = {name.split('/')[1] for name in actual if name.startswith('node_modules/')}
     assert runtime_dependencies == {'diff', 'picomatch'}
     identity = ET.fromstring(archive.read('extension.vsixmanifest')).find('{*}Metadata/{*}Identity')
-    assert identity is not None and identity.attrib['Publisher'] == packaged['publisher'] and identity.attrib['Version'] == packaged['version']
+    assert identity is not None and identity.attrib['Publisher'] == packaged['publisher'] and identity.attrib['Version'] == packaged['version'] and identity.attrib['Id'] == packaged['name']
 report = {'passed': True, 'artifact': str(artifact), 'sha256': hashlib.sha256(artifact.read_bytes()).hexdigest(), 'extensionFiles': len(expected), 'version': manifest['version'], 'sourceBytesEqual': True, 'documentTransforms': 'vsce canonical names and two README links', 'runtimeDependencies': sorted(runtime_dependencies)}
 destination = source / 'output/validation/package.json'
 destination.parent.mkdir(parents=True, exist_ok=True)

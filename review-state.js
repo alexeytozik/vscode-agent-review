@@ -82,15 +82,18 @@ function validateState(saved, { root, aliases = [], recover = false } = {}) {
 }
 
 function createStateStore(file) {
-  let preserve, backup, issue, retry = false;
+  let preserve, backup, issue, retry = false, importing = false;
   async function load(legacy, options) {
-    let source = file;
-    try { await fs.lstat(file); }
-    catch (error) {
-      if (error.code !== 'ENOENT') { retry = true; issue = 'Could not read the saved queue; retry its original before saving.'; throw error; }
-      if (!legacy) { retry = false; return { state: { version: 2, turns: [] }, issues: [] }; }
-      source = legacy;
+    let source;
+    const candidates = [file, ...(Array.isArray(legacy) ? legacy : legacy ? [legacy] : [])];
+    for (const candidate of new Set(candidates)) {
+      try { await fs.lstat(candidate); source = candidate; break; }
+      catch (error) {
+        if (error.code !== 'ENOENT') { retry = true; issue = 'Could not read the saved queue; retry its original before saving.'; throw error; }
+      }
     }
+    if (!source) { retry = false; importing = false; return { state: { version: 2, turns: [] }, issues: [] }; }
+    importing = source !== file;
     try {
       const saved = await readRecord(source, MAX_STATE_BYTES);
       const result = validateState(saved, { ...options, recover: true });
@@ -98,7 +101,6 @@ function createStateStore(file) {
       if (result.issues.length) { preserve = source; issue = 'Some saved queue records were invalid and were not restored.'; }
       return { ...result, migrated: source !== file };
     } catch (error) {
-      if (error.code === 'ENOENT') { retry = false; return { state: { version: 2, turns: [] }, issues: [] }; }
       if (!(error instanceof InvalidRecord)) {
         retry = true; issue = 'Could not read the saved queue; retry its original before saving.'; throw error;
       }
@@ -121,12 +123,21 @@ function createStateStore(file) {
       await fs.chmod(destination, 0o600);
       backup = destination; preserve = undefined;
     }
-    const existing = await fs.lstat(file).catch(error => { if (error.code !== 'ENOENT') throw error; });
-    if (existing && (!existing.isFile() || existing.isSymbolicLink())) throw new Error('The saved queue is not a regular file. It was left unchanged.');
+    if (!importing) {
+      const existing = await fs.lstat(file).catch(error => { if (error.code !== 'ENOENT') throw error; });
+      if (existing && (!existing.isFile() || existing.isSymbolicLink())) throw new Error('The saved queue is not a regular file. It was left unchanged.');
+    }
     const temp = file + '.' + process.pid + '-' + randomUUID() + '.tmp';
     try {
       await fs.writeFile(temp, data, { mode: 0o600, flag: 'wx' });
-      await fs.rename(temp, file);
+      if (importing) {
+        try { await fs.link(temp, file); }
+        catch (error) {
+          if (error.code === 'EEXIST') { retry = true; issue = 'A saved queue appeared during import. Reload it before making review decisions.'; }
+          throw error;
+        }
+        importing = false;
+      } else await fs.rename(temp, file);
     } finally { await fs.unlink(temp).catch(error => { if (error.code !== 'ENOENT') throw error; }); }
   }
   return { load, save, status: () => ({ issue, backup, blocked: Boolean(preserve) || retry, retry }) };

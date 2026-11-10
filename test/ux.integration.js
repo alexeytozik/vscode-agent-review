@@ -7,7 +7,7 @@ const { createPatch } = require('diff');
 module.exports = { run: async () => {
   try {
     const root = await fs.realpath(vscode.workspace.workspaceFolders[0].uri.fsPath);
-    const api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate(); await api.ready;
+    const api = await vscode.extensions.getExtension(require('./extension-id').current).activate(); await api.ready;
     let sequence = 0;
     const auto = value => vscode.workspace.getConfiguration('changeReview').update('autoOpen', value, vscode.ConfigurationTarget.Workspace);
     async function inject(files) {

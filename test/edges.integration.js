@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),vscode=require('vscode');
 const {createPatch}=require('diff');const {actionAt}=require('./review-actions');
 module.exports={run:async()=>{
-  const root=vscode.workspace.workspaceFolders[0].uri.fsPath,api=await vscode.extensions.getExtension('alexeytozik.agent-review').activate(),cases=[];await api.ready;let sequence=0;
+  const root=vscode.workspace.workspaceFolders[0].uri.fsPath,api=await vscode.extensions.getExtension(require('./extension-id').current).activate(),cases=[];await api.ready;let sequence=0;
   async function inject(name,before,after){
     const full=path.join(root,name);if(after===null)await fs.unlink(full).catch(error=>{if(error.code!=='ENOENT')throw error;});else await fs.writeFile(full,after);
     const event={method:'item/completed',type:'fileChange',status:'completed',threadId:'edges',turnId:'case-'+ ++sequence,itemId:'change',changes:[{path:full,kind:{type:before===null?'add':after===null?'delete':'update'},diff:createPatch(name,before||'',after||''),snapshot:{disk:after,text:after,mode:0o644}}]};

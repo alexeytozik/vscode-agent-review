@@ -7,7 +7,7 @@ const { createPatch } = require('diff');
 
 async function run() {
   const root = vscode.workspace.workspaceFolders[0].uri.fsPath;
-  const api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate(); await api.ready;
+  const api = await vscode.extensions.getExtension(require('./extension-id').current).activate(); await api.ready;
   const { actionAt: reviewAction } = require('./review-actions');
   assert.ok(!(await vscode.commands.getCommands()).includes('_changeReview.nativeInspect'), 'The test runs without a patched editor');
   assert.ok(vscode.workspace.getConfiguration('changeReview').inspect('enabled'), 'Toggle configuration is registered in the loaded window');

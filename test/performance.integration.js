@@ -22,7 +22,7 @@ function data(name) {
 module.exports = { run: async () => {
   let server, timer;
   try {
-    const root = await fs.realpath(vscode.workspace.workspaceFolders[0].uri.fsPath), api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate(); await api.ready;
+    const root = await fs.realpath(vscode.workspace.workspaceFolders[0].uri.fsPath), api = await vscode.extensions.getExtension(require('./extension-id').current).activate(); await api.ready;
     let sequence = 0, captureAt, seedElapsed, queueBytes, files = [], fixture;
     async function seed(name) {
       for (const turn of api.getState().turns) await api.discardSnapshot(turn.key);

@@ -5,7 +5,7 @@ const path = require('node:path');
 const vscode = require('vscode');
 module.exports = { run: async () => {
   try {
-    const api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate(); await api.ready; await api.hooks.ready;
+    const api = await vscode.extensions.getExtension(require('./extension-id').current).activate(); await api.ready; await api.hooks.ready;
     assert.equal(api.hooks.status().connected, false);
     const directory = path.join(api.hooks.store, 'events'); await fs.mkdir(directory, { recursive: true });
     const event = path.join(directory, '0000000000000001-pending.json');

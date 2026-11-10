@@ -2,13 +2,14 @@
 // Older Electron builds expose the webview as a CDP target without adding it
 // to Playwright's frame registry. Keep native input on the real workbench.
 module.exports = async (browser, page) => {
-  const outer = page.locator('iframe[src*="extensionId=alexeytozik.agent-review"]').first();
+  const extensionId = require('./extension-id').current, selector = 'iframe[src*="extensionId=' + extensionId + '"]';
+  const outer = page.locator(selector).first();
   const webFrame = page.frames().find(frame => frame !== page.mainFrame());
   if (webFrame) {
-    const holder = page.frameLocator('iframe[src*="extensionId=alexeytozik.agent-review"]').locator('#active-frame');
+    const holder = page.frameLocator(selector).locator('#active-frame');
     return { outer, holder, session: await page.context().newCDPSession(webFrame), element: async selector => (await holder.evaluateHandle((frame, selector) => frame.contentDocument.querySelector(selector), selector)).asElement() };
   }
-  const root = await browser.newBrowserCDPSession(), target = (await root.send('Target.getTargets')).targetInfos.find(target => target.type === 'iframe' && target.url.includes('extensionId=alexeytozik.agent-review'));
+  const root = await browser.newBrowserCDPSession(), target = (await root.send('Target.getTargets')).targetInfos.find(target => target.type === 'iframe' && target.url.includes('extensionId=' + extensionId));
   if (!target) throw new Error('The isolated review webview target is missing.');
   const { sessionId } = await root.send('Target.attachToTarget', { targetId: target.targetId, flatten: false });
   let sequence = 0; const pending = new Map();

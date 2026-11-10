@@ -6,7 +6,7 @@ module.exports = { run: async () => {
     const marker = 'private-fixture-value-6048', root = await fs.realpath(vscode.workspace.workspaceFolders[0].uri.fsPath), home = process.env.CODEX_HOME;
     assert.ok(home.includes('/diagnostics/home'), 'Use only the isolated diagnostic fixture home');
     await fs.writeFile(path.join(home, 'hooks.json'), JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'fixture-hook --value ' + marker }] }] } }));
-    const api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate(); await api.ready; await api.hooks.ready;
+    const api = await vscode.extensions.getExtension(require('./extension-id').current).activate(); await api.ready; await api.hooks.ready;
     await vscode.commands.executeCommand('changeReview.connect');
     process.env.DIAGNOSTIC_FIXTURE_VALUE = marker;
     await vscode.workspace.getConfiguration('changeReview').update('exclude', ['sensitive/' + marker + '/**'], vscode.ConfigurationTarget.Workspace);

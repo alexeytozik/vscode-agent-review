@@ -17,6 +17,13 @@ const { createRequestHistory } = require('./review-metrics');
 const { buildDiagnostics } = require('./review-diagnostics');
 
 function activate(context) {
+  const currentId = context.extension?.id || [require('./package.json').publisher, require('./package.json').name].join('.');
+  const legacyIds = ['alexeytozik.agent-review', 'local-tools.change-review'];
+  const conflict = legacyIds.find(id => id !== currentId && vscode.extensions.getExtension(id));
+  if (conflict) {
+    vscode.window.showWarningMessage('Disable the previous local review extension (' + conflict + ') and reload VS Code before enabling this version. Previous saved reviews are kept and are imported only when this version has no saved queue.');
+    return { migrationBlocked: true, ready: Promise.resolve() };
+  }
   const io = createReviewIO(vscode);
   let model = new ReviewModel(), archiveLoaded = false, serial = Promise.resolve(), selected, outcome, lastPatch, latestRequest, timer, owned = false, resumeOnOpen = false, nativeLoaded = false;
   const ignoredTurns = new Set();
@@ -94,6 +101,7 @@ function activate(context) {
     if (!model.feedback.some(record => record.id === id)) model.feedback.push({ id, turn: arg.turn, path: arg.path, action, created });
   }
   async function flushFeedback() {
+    await loadArchive();
     for (const record of [...model.feedback]) {
       if (!await hooks?.decision(record, record.action)) return;
       model.feedback = model.feedback.filter(item => item.id !== record.id);
@@ -215,18 +223,21 @@ function activate(context) {
   async function loadArchive() {
     if (archiveLoaded) return;
     try {
-      const legacy = path.join(path.dirname(storage.fsPath), 'local-tools.change-review', 'request-review.json');
+      const legacy = legacyIds.filter(id => id !== currentId).map(id => path.join(path.dirname(storage.fsPath), id, 'request-review.json'));
       const restored = await stateStore.load(legacy, { root: root || null, aliases: folder ? [folder.uri.fsPath] : [] });
       model = new ReviewModel(restored.state);
       archiveLoaded = true;
       const removed = applyPolicy();
       if (restored.issues.length) report(new Error(stateStore.status().issue));
       if (restored.migrated || removed) await persist();
+      if (restored.migrated) report(new Error('Saved reviews and unsent saved decisions were copied. The previous storage and its hook backlog were kept unchanged. Finish all running requests before Connect, then start a new request. Review old tool captures and queued transport summaries separately.'));
       if (removed) report(new Error('Protected or excluded snapshots were removed from local review storage; current files were kept unchanged.'));
     } catch (error) {
       // Invalid JSON may recover into a new queue after preserving its original.
       // A transient read error must load the existing queue before any mutation.
-      if (!stateStore.status().retry) archiveLoaded = true;
+      if (stateStore.status().retry) {
+        archiveLoaded = false; model = new ReviewModel(); selected = undefined;
+      } else archiveLoaded = true;
       throw error;
     }
   }
@@ -534,6 +545,7 @@ function activate(context) {
   registerConnection('connect', async () => {
     if (!hooks) throw new Error('Open one local, trusted workspace folder first.');
     await hooks.connect();
+    await exclusive(flushFeedback);
     vscode.window.showInformationMessage('Review hooks configured. Restart your session, open /hooks and trust the pending hooks to start recording edits.');
   });
   registerConnection('disconnect', async () => { await hooks?.disconnect(); vscode.window.showInformationMessage('Review hooks disconnected. Saved decisions are preserved.'); });

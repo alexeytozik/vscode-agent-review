@@ -1,6 +1,6 @@
 {
-  "name": "agent-review",
-  "displayName": "Agent Review",
+  "name": "vscode-agent-review",
+  "displayName": "Agent Review by ANTOLEX",
   "description": "Review individual changes from each request in a full-file review tab.",
   "version": "0.7.4",
   "publisher": "alexeytozik",

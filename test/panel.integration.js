@@ -6,7 +6,7 @@ const vscode = require('vscode');
 const { createPatch } = require('diff');
 
 async function run(root) {
-  const api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate(); await api.ready;
+  const api = await vscode.extensions.getExtension(require('./extension-id').current).activate(); await api.ready;
   assert.equal(vscode.workspace.getConfiguration('changeReview').get('view'), 'review');
   assert.ok(!(await vscode.commands.getCommands()).includes('_changeReview.nativeInspect'), 'The review tab runs in a pristine editor');
   async function state() {

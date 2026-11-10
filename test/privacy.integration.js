@@ -6,7 +6,7 @@ const vscode = require('vscode');
 const { handle } = require('../hook-runner');
 module.exports = { run: async () => {
   try {
-    const root = await fs.realpath(vscode.workspace.workspaceFolders[0].uri.fsPath), api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate(); await api.ready; await api.hooks.ready;
+    const root = await fs.realpath(vscode.workspace.workspaceFolders[0].uri.fsPath), api = await vscode.extensions.getExtension(require('./extension-id').current).activate(); await api.ready; await api.hooks.ready;
     const storage = path.dirname(api.hooks.store), marker = 'private-fixture-value-8136', oldMarker = 'legacy-private-value-9264';
     async function text(directory) {
       let result = ''; for (const e of await fs.readdir(directory, { withFileTypes: true })) {

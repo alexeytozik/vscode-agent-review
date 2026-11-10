@@ -4,7 +4,7 @@ const { createPatch } = require('diff');
 const { handle, atomic, hash } = require('../hook-runner');
 module.exports = { run: async () => {
   try {
-    const root = await fs.realpath(vscode.workspace.workspaceFolders[0].uri.fsPath), api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate(); await api.ready; await api.hooks.ready;
+    const root = await fs.realpath(vscode.workspace.workspaceFolders[0].uri.fsPath), api = await vscode.extensions.getExtension(require('./extension-id').current).activate(); await api.ready; await api.hooks.ready;
     if (!api.hooks.status().connected) await vscode.commands.executeCommand('changeReview.connect');
     const full = path.join(root, 'late.txt'), pending = path.join(api.hooks.store, 'pending', hash('retention/request/operation') + '.json');
     const event = hook => ({ cwd: root, session_id: 'retention', turn_id: 'request', tool_use_id: 'operation', tool_name: 'apply_patch', hook_event_name: hook, tool_input: { command: '*** Begin Patch\n*** Update File: late.txt\n@@\n-before\n+after\n*** End Patch' } });

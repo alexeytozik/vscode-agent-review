@@ -15,7 +15,7 @@ module.exports = { run: async () => {
   const root = await fs.realpath(vscode.workspace.workspaceFolders[0].uri.fsPath), phase = process.env.REVIEW_TEST_PHASE;
   let storage;
   try {
-    const api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate(); await api.ready;
+    const api = await vscode.extensions.getExtension(require('./extension-id').current).activate(); await api.ready;
     fs.open = open;
     storage = path.dirname(api.hooks.store);
     const cache = path.join(storage, 'request-review.json'), full = path.join(root, 'safe.txt');

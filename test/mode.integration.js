@@ -25,7 +25,7 @@ factory.createModeStatus = (editor, enabled, connection) => original({
 
 async function run() {
   const root = vscode.workspace.workspaceFolders[0].uri.fsPath;
-  const api = await vscode.extensions.getExtension('alexeytozik.agent-review').activate();
+  const api = await vscode.extensions.getExtension(require('./extension-id').current).activate();
   await api.ready;
   assert.equal(items.length, 1, 'The active extension creates one real status bar item');
   const item = items[0], config = vscode.workspace.getConfiguration('changeReview');
